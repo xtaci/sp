@@ -37,19 +37,19 @@ func main() {
 			Usage: "topic name for consuming commit log",
 		},
 		cli.StringFlag{
-			Name:  "file",
-			Value: "snapshot.db",
-			Usage: "snapshot file name",
+			Name:  "base",
+			Value: "./snapshot.db",
+			Usage: "base snapshot path, created if file doesn't exists",
 		},
 		cli.StringFlag{
-			Name:  "primkey",
+			Name:  "snapshot",
+			Value: "./snapshot-20060102.db",
+			Usage: "snapshot path, aware of timeformat in golang",
+		},
+		cli.StringFlag{
+			Name:  "primarykey,PK",
 			Value: "",
 			Usage: "use json field as primary key instead of message key, format: https://github.com/Jeffail/gabs",
-		},
-		cli.StringFlag{
-			Name:  "workdir",
-			Value: ".",
-			Usage: "directory for boltdb",
 		},
 		cli.DurationFlag{
 			Name:  "rotate",
@@ -67,7 +67,7 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	db, err := bolt.Open(c.String("workdir")+"/"+c.String("file"), 0666, nil)
+	db, err := bolt.Open(c.String("base"), 0666, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -119,11 +119,13 @@ func processor(c *cli.Context) error {
 			pending[string(msg.Key)] = msg.Value
 			offset = msg.Offset
 		case <-commitTicker.C:
-			commit(c.String("primkey"), db, pending, offset)
+			commit(c.String("primarykey"), db, pending, offset)
 			pending = make(map[string][]byte)
 		case <-rotateTicker.C:
 			if err := db.View(func(tx *bolt.Tx) error {
-				return tx.CopyFile(c.String("workdir")+"/"+c.String("file")+"-"+time.Now().Format(timeFormat), 0600)
+				newfile := time.Now().Format(c.String("snapshot"))
+				log.Println("new archive:", newfile)
+				return tx.CopyFile(newfile, 0666)
 			}); err != nil {
 				log.Fatalln(err)
 			}
