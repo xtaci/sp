@@ -22,7 +22,7 @@ const (
 func main() {
 	myApp := cli.NewApp()
 	myApp.Name = processorName
-	myApp.Usage = "Do Stream-Table Joining On stream.foreignkey = table.Key"
+	myApp.Usage = "Do Stream-Table Joining On stream.foreignkey = table.primarykey"
 	myApp.Version = "0.1"
 	myApp.Flags = []cli.Flag{
 		cli.StringSliceFlag{
@@ -36,7 +36,12 @@ func main() {
 			Usage: "the stream to do JOIN",
 		},
 		cli.StringFlag{
-			Name:  "foreignkey,fk",
+			Name:  "primarykey,PK",
+			Value: "a.b.c",
+			Usage: "use json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
+		},
+		cli.StringFlag{
+			Name:  "foreignkey,FK",
 			Value: "a.b.c",
 			Usage: "use json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 		},
@@ -152,10 +157,12 @@ func processor(c *cli.Context) error {
 			commit(db, memTable, streamOffset, tableOffset)
 		case msg := <-table.Messages():
 			tableOffset = msg.Offset
-			memTable[string(msg.Key)] = msg.Value
+			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
+				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
+				memTable[key] = msg.Value
+			}
 		case msg := <-stream.Messages():
 			streamOffset = msg.Offset
-
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
 				if v := memTable[key]; v != nil {
