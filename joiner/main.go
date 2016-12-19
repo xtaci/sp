@@ -95,6 +95,12 @@ func processor(c *cli.Context) error {
 		log.Fatalln(err)
 	}
 
+	go func() {
+		for err := range producer.Errors() {
+			log.Println(err)
+		}
+	}()
+
 	defer func() {
 		if err := consumer.Close(); err != nil {
 			log.Fatalln(err)
