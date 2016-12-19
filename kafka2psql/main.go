@@ -86,7 +86,10 @@ func processor(c *cli.Context) error {
 
 	// read offset
 	offset := sarama.OffsetOldest
-	db.QueryRow("SELECT value FROM kafka_consumer LIMIT 1").Scan(&offset)
+	err = db.QueryRow("SELECT value FROM kafka_consumer WHERE id = $1 LIMIT 1", c.String("consumer")).Scan(&offset)
+	if err != nil {
+		log.Println(err)
+	}
 	log.Println("consuming from offset:", offset)
 
 	partitionConsumer, err := consumer.ConsumePartition(c.String("topic"), 0, offset)
