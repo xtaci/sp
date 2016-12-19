@@ -134,7 +134,6 @@ func processor(c *cli.Context) error {
 
 func commit(tblName, primKey string, db *sql.DB, msg *sarama.ConsumerMessage, c *cli.Context) {
 	// write message
-	var offset int64
 	key := fmt.Sprint(msg.Offset)
 	if primKey != "" {
 		if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
@@ -145,14 +144,13 @@ func commit(tblName, primKey string, db *sql.DB, msg *sarama.ConsumerMessage, c 
 	}
 
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
-		tblName), key, string(msg.Value)); err != nil {
-		log.Println(r, err)
-	}
-	offset = msg.Offset
-
-	// write offset
-	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
-		consumerTblName), c.String("consumer"), offset); err != nil {
+		tblName), key, string(msg.Value)); err == nil {
+		// write offset
+		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
+			consumerTblName), c.String("consumer"), msg.Offset); err != nil {
+			log.Println(r, err)
+		}
+	} else {
 		log.Println(r, err)
 	}
 }
