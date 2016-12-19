@@ -150,10 +150,14 @@ func processor(c *cli.Context) error {
 
 	log.Println("started")
 	ticker := time.NewTicker(c.Duration("write-interval"))
+	numJoined := 0
+
 	for {
 		select {
 		case <-ticker.C:
 			commit(db, memTable, streamOffset, tableOffset)
+			log.Println("committed:", len(memTable), "stream offset:", streamOffset, "table offset:", tableOffset, "joined:", numJoined)
+			numJoined = 0
 		case msg := <-table.Messages():
 			tableOffset = msg.Offset
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
@@ -171,6 +175,7 @@ func processor(c *cli.Context) error {
 						"}"
 					producer.Input() <- &sarama.ProducerMessage{Topic: c.String("output"), Key: nil, Value: sarama.ByteEncoder([]byte(merged))}
 					commitStreamOffset(db, streamOffset)
+					numJoined++
 				}
 			}
 		}
@@ -202,7 +207,6 @@ func commit(db *bolt.DB, memtable map[string][]byte, streamOffset, tableOffset i
 	}); err != nil {
 		log.Fatalln(err)
 	}
-	log.Println("committed:", len(memtable), "stream offset:", streamOffset, "table offset:", tableOffset)
 }
 
 func commitStreamOffset(db *bolt.DB, streamOffset int64) {
