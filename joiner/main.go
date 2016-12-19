@@ -126,7 +126,9 @@ func processor(c *cli.Context) error {
 
 			c := b.Cursor()
 			for k, v := c.First(); k != nil; k, v = c.Next() {
-				memTable[string(k)] = v
+				value := make([]byte, len(v))
+				copy(value, v)
+				memTable[string(k)] = value
 			}
 		}
 		return nil
