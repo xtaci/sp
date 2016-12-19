@@ -68,8 +68,8 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "output",
-			Value: "merged",
-			Usage: "output stream after JOIN",
+			Value: "joined",
+			Usage: "output stream for joined result",
 		},
 	}
 	myApp.Action = processor
