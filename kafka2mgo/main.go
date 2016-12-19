@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	timeFormat = "2006-01-02T15:04"
-	bucketName = "snapshot"
-	identifier = "__offset__"
+	timeFormat         = "2006-01-02T15:04"
+	bucketName         = "snapshot"
+	consumerCollection = "kafka_consumer"
 )
 
 type Offset struct {
@@ -50,6 +50,11 @@ func main() {
 			Name:  "collection",
 			Value: "log",
 			Usage: "mongodb collection",
+		},
+		cli.StringFlag{
+			Name:  "consumer",
+			Value: "log",
+			Usage: "consumer name to differs offsets in mongodb collection:" + consumerCollection,
 		},
 		cli.StringFlag{
 			Name:  "primarykey,PK",
@@ -91,10 +96,11 @@ func processor(c *cli.Context) error {
 	}()
 
 	// read offset
+	consumerName := c.String("consumer")
 	offset := sarama.OffsetOldest
 	var tOffset Offset
-	if err := coll.Find(bson.M{"kafkaidentifier": identifier}).One(&tOffset); err == nil {
-		offset = tOffset.KafkaOffset + 1
+	if err := sess.DB("").C(consumerCollection).Find(bson.M{"kafkaidentifier": consumerName}).One(&tOffset); err == nil {
+		offset = tOffset.KafkaOffset
 	} else {
 		log.Println(err)
 	}
@@ -121,29 +127,31 @@ func processor(c *cli.Context) error {
 		case msg := <-partitionConsumer.Messages():
 			pending = append(pending, msg)
 		case <-commitTicker.C:
-			commit(coll, pending, primKey)
+			commit(sess, pending, c)
 			pending = nil
 		}
 	}
 }
 
-func commit(c *mgo.Collection, pending []*sarama.ConsumerMessage, primkey string) {
+func commit(sess *mgo.Session, pending []*sarama.ConsumerMessage, c *cli.Context) {
 	var tOffset Offset
-	tOffset.KafkaIdentifier = identifier
+	tOffset.KafkaIdentifier = c.String("consumer")
+	primkey := c.String("primarykey")
+	collection := c.String("collection")
 	for _, v := range pending {
 		doc := make(map[string]interface{})
 		if err := json.Unmarshal(v.Value, &doc); err == nil {
 			if primkey != "" {
 				if jsonParsed, err := gabs.ParseJSON(v.Value); err == nil {
 					key := jsonParsed.Path(primkey).Data()
-					if _, err := c.Upsert(bson.M{primkey: key}, doc); err != nil {
+					if _, err := sess.DB("").C(collection).Upsert(bson.M{primkey: key}, doc); err != nil {
 						log.Println(err)
 					}
 				} else {
 					log.Println(err)
 				}
 			} else {
-				if err := c.Insert(doc); err != nil {
+				if err := sess.DB("").C(collection).Insert(doc); err != nil {
 					log.Println(err)
 				}
 			}
@@ -151,7 +159,9 @@ func commit(c *mgo.Collection, pending []*sarama.ConsumerMessage, primkey string
 		tOffset.KafkaOffset = v.Offset
 	}
 	if len(pending) > 0 {
-		c.Upsert(bson.M{"kafkaidentifier": identifier}, tOffset)
+		if _, err := sess.DB("").C(consumerCollection).Upsert(bson.M{"kafkaidentifier": tOffset.KafkaIdentifier}, tOffset); err != nil {
+			log.Println(err)
+		}
 		log.Println("offset:", tOffset.KafkaOffset)
 	}
 	log.Println("written:", len(pending))
