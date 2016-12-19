@@ -38,7 +38,7 @@ func main() {
 		cli.StringFlag{
 			Name:  "primarykey,PK",
 			Value: "a.b.c",
-			Usage: "use json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
+			Usage: "the json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
 		},
 		cli.StringFlag{
 			Name:  "stream",
@@ -48,7 +48,7 @@ func main() {
 		cli.StringFlag{
 			Name:  "foreignkey,FK",
 			Value: "a.b.c",
-			Usage: "use json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
+			Usage: "the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 		},
 
 		cli.StringFlag{
