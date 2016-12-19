@@ -103,6 +103,9 @@ func processor(c *cli.Context) error {
 		if err := consumer.Close(); err != nil {
 			log.Fatalln(err)
 		}
+		if err := producer.Close(); err != nil {
+			log.Fatalln(err)
+		}
 	}()
 
 	// read database to memory
