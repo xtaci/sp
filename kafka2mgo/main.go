@@ -52,7 +52,7 @@ func main() {
 			Usage: "mongodb collection",
 		},
 		cli.StringFlag{
-			Name:  "prim-key",
+			Name:  "primarykey,PK",
 			Value: "",
 			Usage: "do upsert if primary key is not nil, format: https://github.com/Jeffail/gabs",
 		},
@@ -74,7 +74,7 @@ func processor(c *cli.Context) error {
 	defer sess.Close()
 	coll := sess.DB("").C(c.String("collection"))
 
-	primKey := c.String("prim-key")
+	primKey := c.String("primarykey")
 	if primKey != "" {
 		coll.EnsureIndexKey(primKey)
 	}

@@ -50,7 +50,7 @@ func main() {
 			Usage: "psql table name, aware of timeformat in golang",
 		},
 		cli.StringFlag{
-			Name:  "primkey",
+			Name:  "primarykey,PK",
 			Value: "",
 			Usage: "primary key path in json, if empty, message offset will treated as key, format: https://github.com/Jeffail/gabs",
 		},
@@ -103,7 +103,7 @@ func processor(c *cli.Context) error {
 	var count int64
 	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
 	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSON)")
-	primKey := c.String("primkey")
+	primKey := c.String("primarykey")
 
 	for {
 		select {
