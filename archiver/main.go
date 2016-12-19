@@ -59,8 +59,6 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	// Open the my.db data file in your current directory.
-	// It will be created if it doesn't exist.
 	db, err := bolt.Open(c.String("workdir")+"/"+c.String("file"), 0666, nil)
 	if err != nil {
 		log.Fatal(err)
