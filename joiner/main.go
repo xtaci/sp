@@ -31,9 +31,9 @@ func main() {
 			Usage: "kafka brokers address",
 		},
 		cli.StringFlag{
-			Name:  "stream",
-			Value: "events",
-			Usage: "the stream to do JOIN",
+			Name:  "table",
+			Value: "user_updates",
+			Usage: "the stream as table to do JOIN",
 		},
 		cli.StringFlag{
 			Name:  "primarykey,PK",
@@ -41,15 +41,16 @@ func main() {
 			Usage: "use json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
 		},
 		cli.StringFlag{
+			Name:  "stream",
+			Value: "events",
+			Usage: "the stream to do JOIN",
+		},
+		cli.StringFlag{
 			Name:  "foreignkey,FK",
 			Value: "a.b.c",
 			Usage: "use json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 		},
-		cli.StringFlag{
-			Name:  "table",
-			Value: "user_updates",
-			Usage: "the stream as table to do JOIN",
-		},
+
 		cli.StringFlag{
 			Name:  "file",
 			Value: "join.db",
