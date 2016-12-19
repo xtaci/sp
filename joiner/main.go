@@ -22,7 +22,7 @@ const (
 func main() {
 	myApp := cli.NewApp()
 	myApp.Name = processorName
-	myApp.Usage = "Stream LEFT JOIN Table On Stream.fkid = Table.Id"
+	myApp.Usage = "Do Stream-Table Joining On stream.foreignkey = table.Key"
 	myApp.Version = "0.1"
 	myApp.Flags = []cli.Flag{
 		cli.StringSliceFlag{
