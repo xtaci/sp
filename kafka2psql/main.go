@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	identifier     = "__offset__"
 	reportInterval = 30 * time.Second
 )
 
@@ -48,6 +47,11 @@ func main() {
 			Name:  "tblname",
 			Value: "log_20060102",
 			Usage: "psql table name, aware of timeformat in golang",
+		},
+		cli.StringFlag{
+			Name:  "consumer",
+			Value: "log",
+			Usage: "consumer name to differs offsets in psql table:" + consumerTblName,
 		},
 		cli.StringFlag{
 			Name:  "primarykey,PK",
@@ -145,7 +149,7 @@ func commit(tblName, primKey string, db *sql.DB, msg *sarama.ConsumerMessage, c 
 
 	// write offset
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
-		consumerTblName), identifier, offset); err != nil {
+		consumerTblName), c.String("consumer"), offset); err != nil {
 		log.Println(r, err)
 	}
 }
