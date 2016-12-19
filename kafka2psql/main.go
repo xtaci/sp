@@ -92,8 +92,10 @@ func processor(c *cli.Context) error {
 		}
 	}()
 
-	// kafka offset table creation
+	// table creation
 	db.Exec(fmt.Sprintf("CREATE TABLE %s (id TEXT PRIMARY KEY, value BIGINT)", consumerTblName))
+	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
+	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSON)")
 
 	// read offset
 	offset := sarama.OffsetOldest
@@ -114,15 +116,11 @@ func processor(c *cli.Context) error {
 		}
 	}()
 
-	commitTicker := time.NewTicker(reportInterval)
-
 	log.Println("started")
-
 	var count int64
-	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
-	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSON)")
 	primKey := c.String("primarykey")
 	appendOnly := c.Bool("appendonly")
+	reportTicker := time.NewTicker(reportInterval)
 
 	for {
 		select {
@@ -137,7 +135,7 @@ func processor(c *cli.Context) error {
 
 			commit(tblName, primKey, appendOnly, db, msg, c)
 			count++
-		case <-commitTicker.C:
+		case <-reportTicker.C:
 			log.Println("written:", count)
 			count = 0
 		}
