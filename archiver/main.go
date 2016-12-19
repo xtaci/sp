@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
+	"github.com/Jeffail/gabs"
 	"github.com/Shopify/sarama"
 	"github.com/boltdb/bolt"
 	"github.com/urfave/cli"
@@ -18,6 +20,7 @@ const (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	myApp := cli.NewApp()
 	myApp.Name = "archiver"
 	myApp.Usage = "Create Commit Log Snapshots from Kafka to BoltDB"
@@ -37,6 +40,11 @@ func main() {
 			Name:  "file",
 			Value: "snapshot.db",
 			Usage: "snapshot file name",
+		},
+		cli.StringFlag{
+			Name:  "primkey",
+			Value: "",
+			Usage: "use json field as primary key instead of message key, format: https://github.com/Jeffail/gabs",
 		},
 		cli.StringFlag{
 			Name:  "workdir",
@@ -100,7 +108,7 @@ func processor(c *cli.Context) error {
 		}
 	}()
 
-	var pending []*sarama.ConsumerMessage
+	pending := make(map[string][]byte)
 	rotateTicker := time.NewTicker(c.Duration("rotate"))
 	commitTicker := time.NewTicker(c.Duration("commit-interval"))
 
@@ -108,10 +116,11 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			pending = append(pending, msg)
+			pending[string(msg.Key)] = msg.Value
+			offset = msg.Offset
 		case <-commitTicker.C:
-			commit(db, pending)
-			pending = nil
+			commit(c.String("primkey"), db, pending, offset)
+			pending = make(map[string][]byte)
 		case <-rotateTicker.C:
 			if err := db.View(func(tx *bolt.Tx) error {
 				return tx.CopyFile(c.String("workdir")+"/"+c.String("file")+"-"+time.Now().Format(timeFormat), 0600)
@@ -122,7 +131,7 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(db *bolt.DB, pending []*sarama.ConsumerMessage) {
+func commit(primkey string, db *bolt.DB, pending map[string][]byte, offset int64) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -130,24 +139,30 @@ func commit(db *bolt.DB, pending []*sarama.ConsumerMessage) {
 		}
 
 		// write messages
-		var offset int64
-		for _, msg := range pending {
-			if err = bucket.Put(msg.Key, msg.Value); err != nil {
-				return err
+		for key, value := range pending {
+			if primkey != "" { // json field as primary key
+				if jsonParsed, err := gabs.ParseJSON(value); err == nil {
+					key := fmt.Sprint(jsonParsed.Path(primkey).Data())
+					if err = bucket.Put([]byte(key), value); err != nil {
+						log.Println(err)
+					}
+				} else {
+					log.Println(err)
+				}
+			} else { // message key as primary key
+				if err = bucket.Put([]byte(key), value); err != nil {
+					log.Println(err)
+				}
 			}
-			offset = msg.Offset
 		}
 
 		// write offset
-		if len(pending) > 0 {
-			offset_encode := make([]byte, 8)
-			binary.LittleEndian.PutUint64(offset_encode, uint64(offset))
-			if err = bucket.Put([]byte(offsetKey), offset_encode); err != nil {
-				return err
-			}
-			log.Println("offset:", offset)
+		offset_encode := make([]byte, 8)
+		binary.LittleEndian.PutUint64(offset_encode, uint64(offset))
+		if err = bucket.Put([]byte(offsetKey), offset_encode); err != nil {
+			return err
 		}
-		log.Println("written:", len(pending))
+		log.Println("written:", len(pending), "offset:", offset)
 		return nil
 	}); err != nil {
 		log.Fatalln(err)
