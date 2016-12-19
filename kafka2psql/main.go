@@ -56,7 +56,11 @@ func main() {
 		cli.StringFlag{
 			Name:  "primarykey,PK",
 			Value: "",
-			Usage: "primary key path in json, if empty, message offset will treated as key, format: https://github.com/Jeffail/gabs",
+			Usage: "primary key path in json, if empty, message key will treated as key, format: https://github.com/Jeffail/gabs",
+		},
+		cli.BoolFlag{
+			Name:  "appendonly",
+			Usage: "append message only, will omit --primarykey, and use offset as the primary key",
 		},
 	}
 	myApp.Action = processor
@@ -69,6 +73,13 @@ func processor(c *cli.Context) error {
 		log.Fatal(err)
 	}
 	defer db.Close()
+	log.Println("brokers:", c.StringSlice("brokers"))
+	log.Println("topic:", c.String("topic"))
+	log.Println("pq:", c.String("pq"))
+	log.Println("tblname:", c.String("tblname"))
+	log.Println("consumer:", c.String("consumer"))
+	log.Println("primarykey:", c.String("primarykey"))
+	log.Println("appendonly:", c.String("appendonly"))
 
 	consumer, err := sarama.NewConsumer(c.StringSlice("brokers"), nil)
 	if err != nil {
@@ -111,6 +122,7 @@ func processor(c *cli.Context) error {
 	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
 	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSON)")
 	primKey := c.String("primarykey")
+	appendOnly := c.Bool("appendonly")
 
 	for {
 		select {
@@ -123,7 +135,7 @@ func processor(c *cli.Context) error {
 				lastTblName = tblName
 			}
 
-			commit(tblName, primKey, db, msg, c)
+			commit(tblName, primKey, appendOnly, db, msg, c)
 			count++
 		case <-commitTicker.C:
 			log.Println("written:", count)
@@ -132,19 +144,24 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(tblName, primKey string, db *sql.DB, msg *sarama.ConsumerMessage, c *cli.Context) {
-	// write message
-	key := fmt.Sprint(msg.Offset)
-	if primKey != "" {
+func commit(tblname, primkey string, appendonly bool, db *sql.DB, msg *sarama.ConsumerMessage, c *cli.Context) {
+	// compute key
+	var key string
+	if appendonly {
+		key = fmt.Sprint(msg.Offset)
+	} else if primkey != "" {
 		if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-			key = fmt.Sprint(jsonParsed.Path(primKey).Data())
+			key = fmt.Sprint(jsonParsed.Path(primkey).Data())
 		} else {
 			log.Println(err)
+			return
 		}
+	} else {
+		key = string(msg.Key)
 	}
 
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
-		tblName), key, string(msg.Value)); err == nil {
+		tblname), key, string(msg.Value)); err == nil {
 		// write offset
 		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
 			consumerTblName), c.String("consumer"), msg.Offset); err != nil {
