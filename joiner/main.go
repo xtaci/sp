@@ -158,7 +158,7 @@ func processor(c *cli.Context) error {
 		case msg := <-table.Messages():
 			tableOffset = msg.Offset
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
+				key := fmt.Sprint(jsonParsed.Path(c.String("primarykey")).Data())
 				memTable[key] = msg.Value
 			}
 		case msg := <-stream.Messages():
