@@ -36,9 +36,9 @@ func main() {
 			Usage: "the stream to do JOIN",
 		},
 		cli.StringFlag{
-			Name:  "docpath",
+			Name:  "foreignkey,fk",
 			Value: "a.b.c",
-			Usage: "foreign key path, https://github.com/Jeffail/gabs",
+			Usage: "use json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 		},
 		cli.StringFlag{
 			Name:  "table",
@@ -47,7 +47,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "file",
-			Value: "stream-table-join.db",
+			Value: "join.db",
 			Usage: "persisted table file",
 		},
 		cli.StringFlag{
@@ -58,7 +58,7 @@ func main() {
 		cli.DurationFlag{
 			Name:  "write-interval",
 			Value: 30 * time.Second,
-			Usage: "interval for persistence",
+			Usage: "interval for table persistence",
 		},
 		cli.StringFlag{
 			Name:  "output",
@@ -157,7 +157,7 @@ func processor(c *cli.Context) error {
 			streamOffset = msg.Offset
 
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				key := fmt.Sprint(jsonParsed.Path(c.String("docpath")).Data())
+				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
 				if v := memTable[key]; v != nil {
 					merged := "{" +
 						`"stream":` + string(msg.Value) + "," +
