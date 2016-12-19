@@ -53,13 +53,8 @@ func main() {
 
 		cli.StringFlag{
 			Name:  "file",
-			Value: "join.db",
+			Value: "./join.db",
 			Usage: "persisted table file",
-		},
-		cli.StringFlag{
-			Name:  "workdir",
-			Value: ".",
-			Usage: "directory for boltdb",
 		},
 		cli.DurationFlag{
 			Name:  "write-interval",
@@ -77,7 +72,7 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	db, err := bolt.Open(c.String("workdir")+"/"+c.String("file"), 0666, nil)
+	db, err := bolt.Open(c.String("file"), 0666, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
