@@ -5,7 +5,7 @@
 
 ## Available Tools
 1. archiver -- continuously archive kafka topic to boltdb
-2. joiner -- continuously stream to table join
+2. joiner -- continuously join stream to table
 3. kafka2mgo -- continuously insert messages from kafka to mongodb
 4. kafka2psql -- continuously insert messages from kafka to PostgreSQL
 
