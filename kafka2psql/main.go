@@ -95,7 +95,7 @@ func processor(c *cli.Context) error {
 	// table creation
 	db.Exec(fmt.Sprintf("CREATE TABLE %s (id TEXT PRIMARY KEY, value BIGINT)", consumerTblName))
 	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
-	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSON)")
+	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSONB)")
 
 	// read offset
 	offset := sarama.OffsetOldest
@@ -129,7 +129,7 @@ func processor(c *cli.Context) error {
 			tblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
 			if tblName != lastTblName {
 				// CREATE TABLE
-				db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSON)")
+				db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
 				lastTblName = tblName
 			}
 
