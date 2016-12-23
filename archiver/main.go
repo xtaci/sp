@@ -31,14 +31,14 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "topic, t",
+				Name:  "wal",
 				Value: "WAL",
 				Usage: "topic name for consuming commit log",
 			},
 			&cli.StringFlag{
-				Name:  "table, t",
+				Name:  "table",
 				Value: "event_updates",
-				Usage: "table name to handle",
+				Usage: "table name in WAL to archive",
 			},
 			&cli.StringFlag{
 				Name:  "base",

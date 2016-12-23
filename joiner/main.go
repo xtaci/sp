@@ -32,19 +32,19 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "wal, t",
+				Name:  "wal",
 				Value: "WAL",
 				Usage: "topic name for consuming commit log",
 			},
 			&cli.StringFlag{
 				Name:  "table",
 				Value: "user_updates",
-				Usage: "the stream as table to do JOIN",
+				Usage: "table name in WAL to JOIN",
 			},
 			&cli.StringFlag{
 				Name:  "stream",
 				Value: "events",
-				Usage: "the stream to do JOIN",
+				Usage: "the stream topic to do JOIN",
 			},
 			&cli.StringFlag{
 				Name:  "foreignkey,FK",
