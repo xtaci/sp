@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -49,7 +50,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "foreignkey,FK",
 				Value: "a.b.c",
-				Usage: "the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
+				Usage: "extract the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 			},
 			&cli.StringFlag{
 				Name:  "file",
@@ -170,6 +171,10 @@ func processor(c *cli.Context) error {
 	ticker := time.NewTicker(c.Duration("write-interval"))
 	numJoined := 0
 
+	// parameters
+	host, _ := os.Hostname()
+	tablename := fmt.Sprintf("%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
+	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
 	for {
 		select {
 		case <-ticker.C:
@@ -189,13 +194,21 @@ func processor(c *cli.Context) error {
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
 				if v := memTable[key]; v != nil {
-					merged := "{" +
-						`"stream":` + string(msg.Value) + "," +
-						`"table":` + string(v) +
-						"}"
-					producer.Input() <- &sarama.ProducerMessage{Topic: c.String("output"), Key: nil, Value: sarama.ByteEncoder([]byte(merged))}
-					commitStreamOffset(db, streamOffset)
-					numJoined++
+					commit := make(map[string]interface{})
+					commit["type"] = "joiner"
+					commit["instanceId"] = instanceId
+					commit["table"] = tablename
+					commit["host"] = host
+					commit["data"] = map[string]interface{}{"stream": jsonParsed.Data(), "table": v}
+					commit["key"] = fmt.Sprint(msg.Offset)
+					commit["created_at"] = time.Now()
+					if bts, err := json.Marshal(commit); err == nil {
+						producer.Input() <- &sarama.ProducerMessage{Topic: c.String("output"), Value: sarama.ByteEncoder([]byte(bts))}
+						commitStreamOffset(db, streamOffset)
+						numJoined++
+					} else {
+						log.Println(err)
+					}
 				}
 			}
 		}

@@ -34,9 +34,14 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "topic, t",
-				Value: "commitlog",
+				Name:  "wal",
+				Value: "WAL",
 				Usage: "topic name for consuming commit log",
+			},
+			&cli.StringFlag{
+				Name:  "table",
+				Value: "WAL-user-updates-trace",
+				Usage: "table name in WAL to archive",
 			},
 			&cli.StringFlag{
 				Name:  "pq",
@@ -44,23 +49,9 @@ func main() {
 				Usage: "psql url",
 			},
 			&cli.StringFlag{
-				Name:  "tblname",
+				Name:  "pq_tblname",
 				Value: "log_20060102",
 				Usage: "psql table name, aware of timeformat in golang",
-			},
-			&cli.StringFlag{
-				Name:  "consumer",
-				Value: "log",
-				Usage: "consumer name to differs offsets in psql table:" + consumerTblName,
-			},
-			&cli.StringFlag{
-				Name:  "primarykey,PK",
-				Value: "",
-				Usage: "primary key path in json, if empty, message key will treated as key, format: https://github.com/Jeffail/gabs",
-			},
-			&cli.BoolFlag{
-				Name:  "appendonly",
-				Usage: "append message only, will omit --primarykey, and use offset as the primary key",
 			},
 		},
 		Action: processor,
@@ -70,13 +61,15 @@ func main() {
 
 func processor(c *cli.Context) error {
 	log.Println("brokers:", c.StringSlice("brokers"))
-	log.Println("topic:", c.String("topic"))
+	log.Println("wal:", c.String("wal"))
+	log.Println("table:", c.String("table"))
 	log.Println("pq:", c.String("pq"))
-	log.Println("tblname:", c.String("tblname"))
-	log.Println("consumer:", c.String("consumer"))
-	log.Println("primarykey:", c.String("primarykey"))
-	log.Println("appendonly:", c.Bool("appendonly"))
+	log.Println("pq_tblname:", c.String("pq_tblname"))
 
+	// unique consumer name to store in psql
+	consumerId := fmt.Sprintf("%v-%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq"), c.String("pq_tblname"))
+
+	// connect to postgres
 	db, err := sql.Open("postgres", c.String("pq"))
 	if err != nil {
 		log.Fatal(err)
@@ -96,18 +89,18 @@ func processor(c *cli.Context) error {
 
 	// table creation
 	db.Exec(fmt.Sprintf("CREATE TABLE %s (id TEXT PRIMARY KEY, value BIGINT)", consumerTblName))
-	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
+	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq_tblname")))
 	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSONB)")
 
 	// read offset
 	offset := sarama.OffsetOldest
-	err = db.QueryRow("SELECT value FROM kafka_consumer WHERE id = $1 LIMIT 1", c.String("consumer")).Scan(&offset)
+	err = db.QueryRow("SELECT value FROM kafka_consumer WHERE id = $1 LIMIT 1", consumerId).Scan(&offset)
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("consuming from offset:", offset)
 
-	partitionConsumer, err := consumer.ConsumePartition(c.String("topic"), 0, offset)
+	partitionConsumer, err := consumer.ConsumePartition(c.String("wal"), 0, offset)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -120,8 +113,6 @@ func processor(c *cli.Context) error {
 
 	log.Println("started")
 	var count int64
-	primKey := c.String("primarykey")
-	appendOnly := c.Bool("appendonly")
 	reportTicker := time.NewTicker(reportInterval)
 
 	for {
@@ -135,7 +126,7 @@ func processor(c *cli.Context) error {
 				lastTblName = tblName
 			}
 
-			commit(tblName, primKey, appendOnly, db, msg, c)
+			commit(tblName, consumerId, db, msg)
 			count++
 		case <-reportTicker.C:
 			log.Println("written:", count)
@@ -144,27 +135,21 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(tblname, primkey string, appendonly bool, db *sql.DB, msg *sarama.ConsumerMessage, c *cli.Context) {
-	// compute key
+func commit(tblname, consumerId string, db *sql.DB, msg *sarama.ConsumerMessage) {
+	// extract key
 	var key string
-	if appendonly {
-		key = fmt.Sprint(msg.Offset)
-	} else if primkey != "" {
-		if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-			key = fmt.Sprint(jsonParsed.Path(primkey).Data())
-		} else {
-			log.Println(err)
-			return
-		}
+	if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
+		key = fmt.Sprint(jsonParsed.Path("key").Data())
 	} else {
-		key = string(msg.Key)
+		log.Println(err)
+		return
 	}
 
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
 		tblname), key, string(msg.Value)); err == nil {
 		// write offset
 		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
-			consumerTblName), c.String("consumer"), msg.Offset); err != nil {
+			consumerTblName), consumerId, msg.Offset); err != nil {
 			log.Println(r, err)
 		}
 	} else {
