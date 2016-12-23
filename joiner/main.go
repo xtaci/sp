@@ -51,7 +51,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "foreignkey,FK",
-				Value: "a.b.c",
+				Value: "",
 				Usage: "extract the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 			},
 			&cli.DurationFlag{
@@ -80,6 +80,10 @@ func processor(c *cli.Context) error {
 	log.Println("output table:", outputTable)
 	log.Println("cache file:", cachefile)
 	log.Println("instanceId:", instanceId)
+
+	if c.String("foreignkey") == "" {
+		log.Fatalln("foreignkey is not set")
+	}
 
 	db, err := bolt.Open(cachefile, 0666, nil)
 	if err != nil {
