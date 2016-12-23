@@ -3,14 +3,14 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"github.com/Jeffail/gabs"
 	"github.com/Shopify/sarama"
+	log "github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
-	"github.com/urfave/cli"
+	cli "gopkg.in/urfave/cli.v2"
 )
 
 const (
@@ -20,53 +20,61 @@ const (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	myApp := cli.NewApp()
-	myApp.Name = "archiver"
-	myApp.Usage = "Create Commit Log Snapshots from Kafka to BoltDB"
-	myApp.Version = "0.1"
-	myApp.Flags = []cli.Flag{
-		cli.StringSliceFlag{
-			Name:  "brokers, b",
-			Value: &cli.StringSlice{"localhost:9092"},
-			Usage: "kafka brokers address",
+	app := &cli.App{
+		Name:    "archiver",
+		Usage:   "Create Commit Log Snapshots from Kafka to BoltDB",
+		Version: "0.1",
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "brokers, b",
+				Value: cli.NewStringSlice("localhost:9092"),
+				Usage: "kafka brokers address",
+			},
+			&cli.StringFlag{
+				Name:  "topic, t",
+				Value: "commitlog",
+				Usage: "topic name for consuming commit log",
+			},
+			&cli.StringFlag{
+				Name:  "base",
+				Value: "./snapshot.db",
+				Usage: "base snapshot path, created if file doesn't exists",
+			},
+			&cli.StringFlag{
+				Name:  "snapshot",
+				Value: "./snapshot-20060102.db",
+				Usage: "snapshot path, aware of timeformat in golang",
+			},
+			&cli.StringFlag{
+				Name:  "primarykey,PK",
+				Value: "",
+				Usage: "use json field as primary key instead of message key, format: https://github.com/Jeffail/gabs",
+			},
+			&cli.DurationFlag{
+				Name:  "rotate",
+				Value: 4 * time.Hour,
+				Usage: "backup rotate duration",
+			},
+			&cli.DurationFlag{
+				Name:  "commit-interval",
+				Value: 30 * time.Second,
+				Usage: "longest commit interval to BoltDB",
+			},
 		},
-		cli.StringFlag{
-			Name:  "topic, t",
-			Value: "commitlog",
-			Usage: "topic name for consuming commit log",
-		},
-		cli.StringFlag{
-			Name:  "base",
-			Value: "./snapshot.db",
-			Usage: "base snapshot path, created if file doesn't exists",
-		},
-		cli.StringFlag{
-			Name:  "snapshot",
-			Value: "./snapshot-20060102.db",
-			Usage: "snapshot path, aware of timeformat in golang",
-		},
-		cli.StringFlag{
-			Name:  "primarykey,PK",
-			Value: "",
-			Usage: "use json field as primary key instead of message key, format: https://github.com/Jeffail/gabs",
-		},
-		cli.DurationFlag{
-			Name:  "rotate",
-			Value: 4 * time.Hour,
-			Usage: "backup rotate duration",
-		},
-		cli.DurationFlag{
-			Name:  "commit-interval",
-			Value: 30 * time.Second,
-			Usage: "longest commit interval to BoltDB",
-		},
+		Action: processor,
 	}
-	myApp.Action = processor
-	myApp.Run(os.Args)
+	app.Run(os.Args)
 }
 
 func processor(c *cli.Context) error {
+	log.Println("brokers:", c.StringSlice("brokers"))
+	log.Println("topic:", c.String("topic"))
+	log.Println("base:", c.String("base"))
+	log.Println("snapshot:", c.String("snapshot"))
+	log.Println("primarykey:", c.String("primarykey"))
+	log.Println("rotate:", c.Duration("rotate"))
+	log.Println("commit-interval:", c.Duration("commit-interval"))
+
 	db, err := bolt.Open(c.String("base"), 0666, nil)
 	if err != nil {
 		log.Fatal(err)
