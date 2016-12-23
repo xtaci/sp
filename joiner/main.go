@@ -19,6 +19,7 @@ const (
 	offsetStream  = "__offset_stream__"
 	offsetWAL     = "__offset_wal__"
 	processorName = "joiner"
+	outputTable   = "joiner"
 )
 
 func main() {
@@ -76,6 +77,7 @@ func processor(c *cli.Context) error {
 	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", c.String("wal"), c.String("table"), c.String("stream"))
 	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
 	log.Println("output topic:", outputTopic)
+	log.Println("output table:", outputTable)
 	log.Println("cache file:", cachefile)
 	log.Println("instanceId:", instanceId)
 
@@ -188,7 +190,7 @@ func processor(c *cli.Context) error {
 					commit := make(map[string]interface{})
 					commit["type"] = "AUGMENT"
 					commit["instanceId"] = instanceId
-					commit["table"] = "joiner"
+					commit["table"] = outputTable
 					commit["host"] = host
 					commit["data"] = map[string]interface{}{"stream": jsonParsed.Data(), "table": v}
 					commit["key"] = fmt.Sprint(msg.Offset)
