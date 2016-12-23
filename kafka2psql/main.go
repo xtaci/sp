@@ -49,7 +49,7 @@ func main() {
 				Usage: "psql url",
 			},
 			&cli.StringFlag{
-				Name:  "pq_tblname",
+				Name:  "pq-tblname",
 				Value: "log_20060102",
 				Usage: "psql table name, aware of timeformat in golang",
 			},
@@ -64,10 +64,10 @@ func processor(c *cli.Context) error {
 	log.Println("wal:", c.String("wal"))
 	log.Println("table:", c.String("table"))
 	log.Println("pq:", c.String("pq"))
-	log.Println("pq_tblname:", c.String("pq_tblname"))
+	log.Println("pq-tblname:", c.String("pq-tblname"))
 
 	// unique consumer name to store in psql
-	consumerId := fmt.Sprintf("%v-%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq"), c.String("pq_tblname"))
+	consumerId := fmt.Sprintf("%v-%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq"), c.String("pq-tblname"))
 
 	// connect to postgres
 	db, err := sql.Open("postgres", c.String("pq"))
@@ -89,7 +89,7 @@ func processor(c *cli.Context) error {
 
 	// table creation
 	db.Exec(fmt.Sprintf("CREATE TABLE %s (id TEXT PRIMARY KEY, value BIGINT)", consumerTblName))
-	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq_tblname")))
+	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
 	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSONB)")
 
 	// read offset
