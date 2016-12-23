@@ -40,7 +40,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "table",
-				Value: "WAL-user-updates-trace",
+				Value: "user_updates",
 				Usage: "table name in WAL to archive",
 			},
 			&cli.StringFlag{

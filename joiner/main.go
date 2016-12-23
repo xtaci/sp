@@ -23,9 +23,10 @@ const (
 
 func main() {
 	app := &cli.App{
-		Name:    processorName,
-		Usage:   "Do Stream-Table Joining On stream.foreignkey = table.primarykey",
-		Version: "0.1",
+		Name:        processorName,
+		Usage:       "Do Stream-Table Joining On stream.foreignkey = table.primarykey",
+		Description: "output topic name: joiner-{wal}-{table}-{stream}",
+		Version:     "0.1",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:  "brokers, b",
@@ -57,11 +58,6 @@ func main() {
 				Value: 30 * time.Second,
 				Usage: "interval for cache writing",
 			},
-			&cli.StringFlag{
-				Name:  "output",
-				Value: "joined",
-				Usage: "output stream for joined result",
-			},
 		},
 		Action: processor,
 	}
@@ -75,9 +71,14 @@ func processor(c *cli.Context) error {
 	log.Println("stream:", c.String("stream"))
 	log.Println("foreignkey:", c.String("foreignkey"))
 	log.Println("write-interval:", c.Duration("write-interval"))
-	log.Println("output:", c.String("output"))
 
+	outputTopic := fmt.Sprintf("joiner-%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
 	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", c.String("wal"), c.String("table"), c.String("stream"))
+	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
+	log.Println("output topic:", outputTopic)
+	log.Println("cache file:", cachefile)
+	log.Println("instanceId:", instanceId)
+
 	db, err := bolt.Open(cachefile, 0666, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -137,7 +138,7 @@ func processor(c *cli.Context) error {
 		return nil
 	})
 
-	log.Printf("consuming from: stream:%v offset:%v  wal:%v offset:%v\n", c.String("stream"), streamOffset, c.String("wal"), walOffset)
+	log.Printf("consuming from: stream:%v offset:%v  wal:%v offset:%v", c.String("stream"), streamOffset, c.String("wal"), walOffset)
 
 	stream, err := consumer.ConsumePartition(c.String("stream"), 0, streamOffset)
 	if err != nil {
@@ -165,8 +166,6 @@ func processor(c *cli.Context) error {
 
 	// parameters
 	host, _ := os.Hostname()
-	tablename := fmt.Sprintf("%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
-	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
 	for {
 		select {
 		case <-ticker.C:
@@ -187,15 +186,15 @@ func processor(c *cli.Context) error {
 				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
 				if v := memTable[key]; v != nil {
 					commit := make(map[string]interface{})
-					commit["type"] = "joiner"
+					commit["type"] = "AUGMENT"
 					commit["instanceId"] = instanceId
-					commit["table"] = tablename
+					commit["table"] = "joiner"
 					commit["host"] = host
 					commit["data"] = map[string]interface{}{"stream": jsonParsed.Data(), "table": v}
 					commit["key"] = fmt.Sprint(msg.Offset)
 					commit["created_at"] = time.Now()
 					if bts, err := json.Marshal(commit); err == nil {
-						producer.Input() <- &sarama.ProducerMessage{Topic: c.String("output"), Value: sarama.ByteEncoder([]byte(bts))}
+						producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
 						commitStreamOffset(db, streamOffset)
 						numJoined++
 					} else {

@@ -1,7 +1,6 @@
 # joiner
 
 ```
-$ ./joiner -h
 NAME:
    joiner - Do Stream-Table Joining On stream.foreignkey = table.primarykey
 
@@ -10,6 +9,9 @@ USAGE:
 
 VERSION:
    0.1
+
+DESCRIPTION:
+   output topic name: joiner-{wal}-{table}-{stream}
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
@@ -21,8 +23,6 @@ GLOBAL OPTIONS:
    --stream value          the stream topic to do JOIN (default: "events")
    --foreignkey value      extract the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs (default: "a.b.c")
    --write-interval value  interval for cache writing (default: 30s)
-   --output value          output stream for joined result (default: "joined")
    --help, -h              show help (default: false)
-   --version, -v           print the version (default: false)
-   
+   --version, -v           print the version (default: false)  
 ```
