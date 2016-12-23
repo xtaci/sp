@@ -29,3 +29,9 @@ All tools above will input/output json message from Kafka, in format:
   "type": "WAL"
 }
 ```
+
+host: where this message is generated
+instanceId : who generate this message
+key: a unique id (events) or primary key(table) of this message
+table: a sub category of this message
+type: a higher category of this message
