@@ -68,7 +68,7 @@ func main() {
 
 func processor(c *cli.Context) error {
 	log.Println("brokers:", c.StringSlice("brokers"))
-	log.Println("topic:", c.String("topic"))
+	log.Println("wal:", c.String("wal"))
 	log.Println("base:", c.String("base"))
 	log.Println("table:", c.String("table"))
 	log.Println("snapshot:", c.String("snapshot"))
@@ -105,7 +105,7 @@ func processor(c *cli.Context) error {
 	})
 	log.Println("consuming from offset:", offset)
 
-	partitionConsumer, err := consumer.ConsumePartition(c.String("topic"), 0, offset)
+	partitionConsumer, err := consumer.ConsumePartition(c.String("wal"), 0, offset)
 	if err != nil {
 		log.Fatalln(err)
 	}
