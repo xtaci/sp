@@ -3,14 +3,15 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"github.com/Jeffail/gabs"
 	"github.com/Shopify/sarama"
 	"github.com/boltdb/bolt"
-	"github.com/urfave/cli"
+
+	log "github.com/Sirupsen/logrus"
+	cli "gopkg.in/urfave/cli.v2"
 )
 
 const (
@@ -20,58 +21,67 @@ const (
 )
 
 func main() {
-	myApp := cli.NewApp()
-	myApp.Name = processorName
-	myApp.Usage = "Do Stream-Table Joining On stream.foreignkey = table.primarykey"
-	myApp.Version = "0.1"
-	myApp.Flags = []cli.Flag{
-		cli.StringSliceFlag{
-			Name:  "brokers, b",
-			Value: &cli.StringSlice{"localhost:9092"},
-			Usage: "kafka brokers address",
+	app := &cli.App{
+		Name:    processorName,
+		Usage:   "Do Stream-Table Joining On stream.foreignkey = table.primarykey",
+		Version: "0.1",
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "brokers, b",
+				Value: cli.NewStringSlice("localhost:9092"),
+				Usage: "kafka brokers address",
+			},
+			&cli.StringFlag{
+				Name:  "table",
+				Value: "user_updates",
+				Usage: "the stream as table to do JOIN",
+			},
+			&cli.StringFlag{
+				Name:  "primarykey,PK",
+				Value: "a.b.c",
+				Usage: "the json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
+			},
+			&cli.StringFlag{
+				Name:  "stream",
+				Value: "events",
+				Usage: "the stream to do JOIN",
+			},
+			&cli.StringFlag{
+				Name:  "foreignkey,FK",
+				Value: "a.b.c",
+				Usage: "the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
+			},
+			&cli.StringFlag{
+				Name:  "file",
+				Value: "./join.db",
+				Usage: "persisted table file",
+			},
+			&cli.DurationFlag{
+				Name:  "write-interval",
+				Value: 30 * time.Second,
+				Usage: "interval for table persistence",
+			},
+			&cli.StringFlag{
+				Name:  "output",
+				Value: "joined",
+				Usage: "output stream for joined result",
+			},
 		},
-		cli.StringFlag{
-			Name:  "table",
-			Value: "user_updates",
-			Usage: "the stream as table to do JOIN",
-		},
-		cli.StringFlag{
-			Name:  "primarykey,PK",
-			Value: "a.b.c",
-			Usage: "the json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
-		},
-		cli.StringFlag{
-			Name:  "stream",
-			Value: "events",
-			Usage: "the stream to do JOIN",
-		},
-		cli.StringFlag{
-			Name:  "foreignkey,FK",
-			Value: "a.b.c",
-			Usage: "the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
-		},
-
-		cli.StringFlag{
-			Name:  "file",
-			Value: "./join.db",
-			Usage: "persisted table file",
-		},
-		cli.DurationFlag{
-			Name:  "write-interval",
-			Value: 30 * time.Second,
-			Usage: "interval for table persistence",
-		},
-		cli.StringFlag{
-			Name:  "output",
-			Value: "joined",
-			Usage: "output stream for joined result",
-		},
+		Action: processor,
 	}
-	myApp.Action = processor
-	myApp.Run(os.Args)
+	app.Run(os.Args)
 }
 
 func processor(c *cli.Context) error {
+	log.Println("brokers:", c.StringSlice("brokers"))
+	log.Println("table:", c.String("table"))
+	log.Println("primarykey:", c.String("primarykey"))
+	log.Println("stream:", c.String("stream"))
+	log.Println("foreignkey:", c.String("foreignkey"))
+	log.Println("file:", c.String("file"))
+	log.Println("write-interval:", c.Duration("write-interval"))
+	log.Println("output:", c.String("output"))
+
 	db, err := bolt.Open(c.String("file"), 0666, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -134,7 +144,7 @@ func processor(c *cli.Context) error {
 		return nil
 	})
 
-	log.Printf("consuming from: stream:%v offset:%v  table:%v offset %v\n", c.String("stream"), streamOffset, c.String("table"), tableOffset)
+	log.Printf("consuming from: stream:%v offset:%v  table:%v offset:%v\n", c.String("stream"), streamOffset, c.String("table"), tableOffset)
 
 	stream, err := consumer.ConsumePartition(c.String("stream"), 0, streamOffset)
 	if err != nil {

@@ -2,37 +2,40 @@
 from __future__ import print_function
 
 import argparse
+import glob
 import os
+import platform
+import shutil
 import sys
 import tempfile
 
 from subprocess import check_call, check_output
 
 
-PACKAGE_NAME = os.environ.get(
+_WINDOWS = platform.system().lower() == 'windows'
+_PACKAGE_NAME = os.environ.get(
     'CLI_PACKAGE_NAME', 'github.com/urfave/cli'
 )
+_TARGETS = {}
 
 
 def main(sysargs=sys.argv[:]):
-    targets = {
-        'vet': _vet,
-        'test': _test,
-        'gfmrun': _gfmrun,
-        'toc': _toc,
-        'gen': _gen,
-    }
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'target', nargs='?', choices=tuple(targets.keys()), default='test'
+        'target', nargs='?', choices=tuple(_TARGETS.keys()), default='test'
     )
     args = parser.parse_args(sysargs[1:])
 
-    targets[args.target]()
+    _TARGETS[args.target]()
     return 0
 
 
+def _target(func):
+    _TARGETS[func.__name__.strip('_')] = func
+    return func
+
+
+@_target
 def _test():
     if check_output('go version'.split()).split()[2] < 'go1.2':
         _run('go test -v .')
@@ -48,7 +51,7 @@ def _test():
 
         _run('go test -v'.split() + [
             '-coverprofile={}'.format(coverprofile),
-            ('{}/{}'.format(PACKAGE_NAME, subpackage)).rstrip('/')
+            ('{}/{}'.format(_PACKAGE_NAME, subpackage)).rstrip('/')
         ])
 
     combined_name = _combine_coverprofiles(coverprofiles)
@@ -56,6 +59,7 @@ def _test():
     os.remove(combined_name)
 
 
+@_target
 def _gfmrun():
     go_version = check_output('go version'.split()).split()[2]
     if go_version < 'go1.3':
@@ -64,15 +68,52 @@ def _gfmrun():
     _run(['gfmrun', '-c', str(_gfmrun_count()), '-s', 'README.md'])
 
 
+@_target
 def _vet():
     _run('go vet ./...')
 
 
+@_target
+def _migrations():
+    go_version = check_output('go version'.split()).split()[2]
+    if go_version < 'go1.3':
+        print('runtests: skip on {}'.format(go_version), file=sys.stderr)
+        return
+
+    migration_script = os.path.abspath(
+        os.environ.get('V1TOV2', './cli-v1-to-v2')
+    )
+    v1_readme_url = os.environ.get(
+        'V1README',
+        'https://raw.githubusercontent.com/urfave/cli/v1/README.md'
+    )
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        os.chdir(tmpdir)
+        _run('curl -sSL -o README.md {}'.format(v1_readme_url).split())
+        _run('gfmrun extract -o .'.split())
+
+        for gofile in glob.glob('*.go'):
+            for i in (0, 1):
+                _run(['python', migration_script, '-w', gofile])
+                _run('go build -o tmp.out {}'.format(gofile).split())
+    finally:
+        if os.environ.get('NOCLEAN', '') == '':
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@_target
 def _toc():
-    _run('node_modules/.bin/markdown-toc -i README.md')
+    exe = ['bash'] if _WINDOWS else []
+    _run(exe + [
+        os.path.join('node_modules', '.bin', 'markdown-toc'),
+        '-i', 'README.md'
+    ])
     _run('git diff --exit-code')
 
 
+@_target
 def _gen():
     go_version = check_output('go version'.split()).split()[2]
     if go_version < 'go1.5':
@@ -87,6 +128,7 @@ def _run(command):
     if hasattr(command, 'split'):
         command = command.split()
     print('runtests: {}'.format(' '.join(command)), file=sys.stderr)
+    sys.stderr.flush()
     check_call(command)
 
 
