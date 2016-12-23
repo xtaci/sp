@@ -18,7 +18,7 @@ import (
 const (
 	offsetStream  = "__offset_stream__"
 	offsetWAL     = "__offset_wal__"
-	processorName = "stream-table join"
+	processorName = "joiner"
 )
 
 func main() {
@@ -52,15 +52,10 @@ func main() {
 				Value: "a.b.c",
 				Usage: "extract the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
 			},
-			&cli.StringFlag{
-				Name:  "file",
-				Value: "./join.db",
-				Usage: "persisted table file",
-			},
 			&cli.DurationFlag{
 				Name:  "write-interval",
 				Value: 30 * time.Second,
-				Usage: "interval for table persistence",
+				Usage: "interval for cache writing",
 			},
 			&cli.StringFlag{
 				Name:  "output",
@@ -79,11 +74,11 @@ func processor(c *cli.Context) error {
 	log.Println("table:", c.String("table"))
 	log.Println("stream:", c.String("stream"))
 	log.Println("foreignkey:", c.String("foreignkey"))
-	log.Println("file:", c.String("file"))
 	log.Println("write-interval:", c.Duration("write-interval"))
 	log.Println("output:", c.String("output"))
 
-	db, err := bolt.Open(c.String("file"), 0666, nil)
+	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", c.String("wal"), c.String("table"), c.String("stream"))
+	db, err := bolt.Open(cachefile, 0666, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
