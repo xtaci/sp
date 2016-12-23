@@ -101,16 +101,13 @@ func processor(c *cli.Context) error {
 		log.Fatalln(err)
 	}
 
-	producer, err := sarama.NewAsyncProducer(c.StringSlice("brokers"), nil)
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = false
+	config.Producer.Return.Errors = false
+	producer, err := sarama.NewAsyncProducer(c.StringSlice("brokers"), config)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	go func() {
-		for err := range producer.Errors() {
-			log.Println(err)
-		}
-	}()
 
 	defer func() {
 		if err := consumer.Close(); err != nil {
