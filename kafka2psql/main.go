@@ -67,7 +67,8 @@ func processor(c *cli.Context) error {
 	log.Println("pq-tblname:", c.String("pq-tblname"))
 
 	// unique consumer name to store in psql
-	consumerId := fmt.Sprintf("%v-%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq"), c.String("pq-tblname"))
+	consumerId := fmt.Sprintf("%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq-tblname"))
+	log.Println("consumerId:", consumerId)
 
 	// connect to postgres
 	db, err := sql.Open("postgres", c.String("pq"))
