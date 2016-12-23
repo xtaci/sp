@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -12,7 +11,9 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/Shopify/sarama"
-	"github.com/urfave/cli"
+
+	log "github.com/Sirupsen/logrus"
+	cli "gopkg.in/urfave/cli.v2"
 )
 
 const (
@@ -22,64 +23,65 @@ const (
 var consumerTblName = pq.QuoteIdentifier("kafka_consumer")
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	myApp := cli.NewApp()
-	myApp.Name = "kafka2psql"
-	myApp.Usage = `Store Kafka Topic To PostgreSQL Table`
-	myApp.Version = "0.1"
-	myApp.Flags = []cli.Flag{
-		cli.StringSliceFlag{
-			Name:  "brokers, b",
-			Value: &cli.StringSlice{"localhost:9092"},
-			Usage: "kafka brokers address",
+	app := &cli.App{
+		Name:    "kafka2psql",
+		Usage:   `Store Kafka Topic To PostgreSQL Table`,
+		Version: "0.1",
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "brokers, b",
+				Value: cli.NewStringSlice("localhost:9092"),
+				Usage: "kafka brokers address",
+			},
+			&cli.StringFlag{
+				Name:  "topic, t",
+				Value: "commitlog",
+				Usage: "topic name for consuming commit log",
+			},
+			&cli.StringFlag{
+				Name:  "pq",
+				Value: "postgres://127.0.0.1:5432/pipeline?sslmode=disable",
+				Usage: "psql url",
+			},
+			&cli.StringFlag{
+				Name:  "tblname",
+				Value: "log_20060102",
+				Usage: "psql table name, aware of timeformat in golang",
+			},
+			&cli.StringFlag{
+				Name:  "consumer",
+				Value: "log",
+				Usage: "consumer name to differs offsets in psql table:" + consumerTblName,
+			},
+			&cli.StringFlag{
+				Name:  "primarykey,PK",
+				Value: "",
+				Usage: "primary key path in json, if empty, message key will treated as key, format: https://github.com/Jeffail/gabs",
+			},
+			&cli.BoolFlag{
+				Name:  "appendonly",
+				Usage: "append message only, will omit --primarykey, and use offset as the primary key",
+			},
 		},
-		cli.StringFlag{
-			Name:  "topic, t",
-			Value: "commitlog",
-			Usage: "topic name for consuming commit log",
-		},
-		cli.StringFlag{
-			Name:  "pq",
-			Value: "postgres://127.0.0.1:5432/pipeline?sslmode=disable",
-			Usage: "psql url",
-		},
-		cli.StringFlag{
-			Name:  "tblname",
-			Value: "log_20060102",
-			Usage: "psql table name, aware of timeformat in golang",
-		},
-		cli.StringFlag{
-			Name:  "consumer",
-			Value: "log",
-			Usage: "consumer name to differs offsets in psql table:" + consumerTblName,
-		},
-		cli.StringFlag{
-			Name:  "primarykey,PK",
-			Value: "",
-			Usage: "primary key path in json, if empty, message key will treated as key, format: https://github.com/Jeffail/gabs",
-		},
-		cli.BoolFlag{
-			Name:  "appendonly",
-			Usage: "append message only, will omit --primarykey, and use offset as the primary key",
-		},
+		Action: processor,
 	}
-	myApp.Action = processor
-	myApp.Run(os.Args)
+	app.Run(os.Args)
 }
 
 func processor(c *cli.Context) error {
-	db, err := sql.Open("postgres", c.String("pq"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
 	log.Println("brokers:", c.StringSlice("brokers"))
 	log.Println("topic:", c.String("topic"))
 	log.Println("pq:", c.String("pq"))
 	log.Println("tblname:", c.String("tblname"))
 	log.Println("consumer:", c.String("consumer"))
 	log.Println("primarykey:", c.String("primarykey"))
-	log.Println("appendonly:", c.String("appendonly"))
+	log.Println("appendonly:", c.Bool("appendonly"))
+
+	db, err := sql.Open("postgres", c.String("pq"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
 	consumer, err := sarama.NewConsumer(c.StringSlice("brokers"), nil)
 	if err != nil {
