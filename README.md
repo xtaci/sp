@@ -17,3 +17,17 @@ go get github.com/xtaci/sp/kafka2mgo
 go get github.com/xtaci/sp/kafka2psql
 go get github.com/xtaci/sp/joiner
 ```
+
+## Message Format
+Each message contains a json 
+```
+{
+  "created_at": "2016-12-23T10:23:59.947264032Z",
+  "data": {},
+  "host": "game-dev",
+  "instanceId": "game1",
+  "key": 1059730,
+  "table": "event_updates",
+  "type": "WAL"
+}
+```
