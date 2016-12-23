@@ -19,7 +19,7 @@ go get github.com/xtaci/sp/joiner
 ```
 
 ## Message Format
-Each message contains a json 
+All tools above are based on a json message format like:
 ```
 {
   "created_at": "2016-12-23T10:23:59.947264032Z",
