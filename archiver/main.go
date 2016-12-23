@@ -32,8 +32,13 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "topic, t",
-				Value: "commitlog",
+				Value: "WAL",
 				Usage: "topic name for consuming commit log",
+			},
+			&cli.StringFlag{
+				Name:  "table, t",
+				Value: "event_updates",
+				Usage: "table name to handle",
 			},
 			&cli.StringFlag{
 				Name:  "base",
@@ -44,11 +49,6 @@ func main() {
 				Name:  "snapshot",
 				Value: "./snapshot-20060102.db",
 				Usage: "snapshot path, aware of timeformat in golang",
-			},
-			&cli.StringFlag{
-				Name:  "primarykey,PK",
-				Value: "",
-				Usage: "use json field as primary key instead of message key, format: https://github.com/Jeffail/gabs",
 			},
 			&cli.DurationFlag{
 				Name:  "rotate",
@@ -70,8 +70,8 @@ func processor(c *cli.Context) error {
 	log.Println("brokers:", c.StringSlice("brokers"))
 	log.Println("topic:", c.String("topic"))
 	log.Println("base:", c.String("base"))
+	log.Println("table:", c.String("table"))
 	log.Println("snapshot:", c.String("snapshot"))
-	log.Println("primarykey:", c.String("primarykey"))
 	log.Println("rotate:", c.Duration("rotate"))
 	log.Println("commit-interval:", c.Duration("commit-interval"))
 
@@ -124,10 +124,17 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			pending[string(msg.Key)] = msg.Value
-			offset = msg.Offset
+			// extract key
+			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
+				key := fmt.Sprint(jsonParsed.Path("key").Data())
+				log.Println(key)
+				pending[key] = msg.Value
+				offset = msg.Offset
+			} else {
+				log.Println(err)
+			}
 		case <-commitTicker.C:
-			commit(c.String("primarykey"), db, pending, offset)
+			commit(db, pending, offset)
 			pending = make(map[string][]byte)
 		case <-rotateTicker.C:
 			if err := db.View(func(tx *bolt.Tx) error {
@@ -141,7 +148,7 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(primkey string, db *bolt.DB, pending map[string][]byte, offset int64) {
+func commit(db *bolt.DB, pending map[string][]byte, offset int64) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -150,19 +157,8 @@ func commit(primkey string, db *bolt.DB, pending map[string][]byte, offset int64
 
 		// write messages
 		for key, value := range pending {
-			if primkey != "" { // json field as primary key
-				if jsonParsed, err := gabs.ParseJSON(value); err == nil {
-					key := fmt.Sprint(jsonParsed.Path(primkey).Data())
-					if err = bucket.Put([]byte(key), value); err != nil {
-						log.Println(err)
-					}
-				} else {
-					log.Println(err)
-				}
-			} else { // message key as primary key
-				if err = bucket.Put([]byte(key), value); err != nil {
-					log.Println(err)
-				}
+			if err = bucket.Put([]byte(key), value); err != nil {
+				log.Println(err)
 			}
 		}
 
