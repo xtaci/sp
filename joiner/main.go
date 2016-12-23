@@ -16,7 +16,7 @@ import (
 
 const (
 	offsetStream  = "__offset_stream__"
-	offsetTable   = "__offset_table__"
+	offsetWAL     = "__offset_wal__"
 	processorName = "stream-table join"
 )
 
@@ -32,14 +32,14 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
+				Name:  "wal, t",
+				Value: "WAL",
+				Usage: "topic name for consuming commit log",
+			},
+			&cli.StringFlag{
 				Name:  "table",
 				Value: "user_updates",
 				Usage: "the stream as table to do JOIN",
-			},
-			&cli.StringFlag{
-				Name:  "primarykey,PK",
-				Value: "a.b.c",
-				Usage: "the json field as primary key in table messages, format: https://github.com/Jeffail/gabs",
 			},
 			&cli.StringFlag{
 				Name:  "stream",
@@ -74,8 +74,8 @@ func main() {
 
 func processor(c *cli.Context) error {
 	log.Println("brokers:", c.StringSlice("brokers"))
+	log.Println("wal:", c.String("wal"))
 	log.Println("table:", c.String("table"))
-	log.Println("primarykey:", c.String("primarykey"))
 	log.Println("stream:", c.String("stream"))
 	log.Println("foreignkey:", c.String("foreignkey"))
 	log.Println("file:", c.String("file"))
@@ -123,15 +123,15 @@ func processor(c *cli.Context) error {
 	// read database to memory
 	memTable := make(map[string][]byte)
 	streamOffset := sarama.OffsetOldest
-	tableOffset := sarama.OffsetOldest
+	walOffset := sarama.OffsetOldest
 
 	db.View(func(tx *bolt.Tx) error {
 		if b := tx.Bucket([]byte(processorName)); b != nil {
 			if v := b.Get([]byte(offsetStream)); v != nil {
 				streamOffset = int64(binary.LittleEndian.Uint64(v))
 			}
-			if v := b.Get([]byte(offsetTable)); v != nil {
-				tableOffset = int64(binary.LittleEndian.Uint64(v))
+			if v := b.Get([]byte(offsetWAL)); v != nil {
+				walOffset = int64(binary.LittleEndian.Uint64(v))
 			}
 
 			c := b.Cursor()
@@ -144,14 +144,14 @@ func processor(c *cli.Context) error {
 		return nil
 	})
 
-	log.Printf("consuming from: stream:%v offset:%v  table:%v offset:%v\n", c.String("stream"), streamOffset, c.String("table"), tableOffset)
+	log.Printf("consuming from: stream:%v offset:%v  wal:%v offset:%v\n", c.String("stream"), streamOffset, c.String("wal"), walOffset)
 
 	stream, err := consumer.ConsumePartition(c.String("stream"), 0, streamOffset)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	table, err := consumer.ConsumePartition(c.String("table"), 0, tableOffset)
+	wal, err := consumer.ConsumePartition(c.String("wal"), 0, walOffset)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -161,7 +161,7 @@ func processor(c *cli.Context) error {
 			log.Fatalln(err)
 		}
 
-		if err := table.Close(); err != nil {
+		if err := wal.Close(); err != nil {
 			log.Fatalln(err)
 		}
 	}()
@@ -173,14 +173,16 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			commit(db, memTable, streamOffset, tableOffset)
-			log.Println("committed:", len(memTable), "stream offset:", streamOffset, "table offset:", tableOffset, "joined:", numJoined)
+			commit(db, memTable, streamOffset, walOffset)
+			log.Println("committed:", len(memTable), "stream offset:", streamOffset, "wal offset:", walOffset, "joined:", numJoined)
 			numJoined = 0
-		case msg := <-table.Messages():
-			tableOffset = msg.Offset
+		case msg := <-wal.Messages():
+			walOffset = msg.Offset
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				key := fmt.Sprint(jsonParsed.Path(c.String("primarykey")).Data())
-				memTable[key] = msg.Value
+				if table := fmt.Sprint(jsonParsed.Path("table").Data()); table == c.String("table") {
+					key := fmt.Sprint(jsonParsed.Path("key").Data())
+					memTable[key] = msg.Value
+				}
 			}
 		case msg := <-stream.Messages():
 			streamOffset = msg.Offset
@@ -211,7 +213,7 @@ func commit(db *bolt.DB, memtable map[string][]byte, streamOffset, tableOffset i
 
 		buf1 := make([]byte, 8)
 		binary.LittleEndian.PutUint64(buf1, uint64(tableOffset))
-		if err := bucket.Put([]byte(offsetTable), buf1); err != nil {
+		if err := bucket.Put([]byte(offsetWAL), buf1); err != nil {
 			return err
 		}
 
