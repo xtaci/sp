@@ -24,10 +24,9 @@ const (
 
 func main() {
 	app := &cli.App{
-		Name:        processorName,
-		Usage:       "Do Stream-Table Joining On stream.foreignkey = table.primarykey",
-		Description: "output topic name: joiner-{wal}-{table}-{stream}",
-		Version:     "0.1",
+		Name:    processorName,
+		Usage:   "Stream-Table Joining On stream.foreignkey = table.primarykey",
+		Version: "0.1",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name:  "brokers, b",
@@ -48,6 +47,11 @@ func main() {
 				Name:  "stream",
 				Value: "events",
 				Usage: "the stream topic to do JOIN",
+			},
+			&cli.StringFlag{
+				Name:  "output",
+				Value: "",
+				Usage: "default output topic name: joiner-{wal}-{table}-{stream}",
 			},
 			&cli.StringFlag{
 				Name:  "foreignkey,FK",
@@ -73,10 +77,13 @@ func processor(c *cli.Context) error {
 	log.Println("foreignkey:", c.String("foreignkey"))
 	log.Println("write-interval:", c.Duration("write-interval"))
 
-	outputTopic := fmt.Sprintf("joiner-%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
+	outputTopic := c.String("output")
+	if outputTopic == "" {
+		outputTopic = fmt.Sprintf("joiner-%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
+	}
 	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", c.String("wal"), c.String("table"), c.String("stream"))
 	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
-	log.Println("output topic:", outputTopic)
+	log.Println("output:", outputTopic)
 	log.Println("output table:", outputTable)
 	log.Println("cache file:", cachefile)
 	log.Println("instanceId:", instanceId)
