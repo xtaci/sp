@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	timeFormat = "2006-01-02T15:04"
 	bucketName = "snapshot"
 	offsetKey  = "__offset__"
 )
@@ -127,7 +126,6 @@ func processor(c *cli.Context) error {
 			// extract key
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				key := fmt.Sprint(jsonParsed.Path("key").Data())
-				log.Println(key)
 				pending[key] = msg.Value
 				offset = msg.Offset
 			} else {
