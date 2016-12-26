@@ -3,12 +3,13 @@
 [1]: https://travis-ci.org/xtaci/sp.svg?branch=master
 [2]: https://travis-ci.org/xtaci/sp
 
-A Swiss army knife for kafka + golang stream processing
+A Swiss army knife for kafka + golang stream processing.
+![swiss](swiss-army.jpg)
 
 ## Available Tools
-1. archiver -- continuously archive kafka topic to boltdb
-2. joiner -- continuously join stream to table
-3. kafka2psql -- continuously insert messages from kafka to PostgreSQL
+1. kafka2bolt -- continuously archive kafka topic to boltdb
+2. kafka2psql -- continuously insert messages from kafka to PostgreSQL
+3. joiner -- continuously join stream to table
 
 
 ## Installations
