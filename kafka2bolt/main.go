@@ -20,8 +20,8 @@ const (
 
 func main() {
 	app := &cli.App{
-		Name:    "archiver",
-		Usage:   "Create Commit Log Snapshots from Kafka to BoltDB",
+		Name:    "kafka2bolt",
+		Usage:   `Store Kafka Topic To BoltDB file`,
 		Version: "0.1",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
@@ -137,7 +137,7 @@ func processor(c *cli.Context) error {
 		case <-rotateTicker.C:
 			if err := db.View(func(tx *bolt.Tx) error {
 				newfile := time.Now().Format(c.String("snapshot"))
-				log.Println("new archive:", newfile)
+				log.Println("new boltdb file:", newfile)
 				return tx.CopyFile(newfile, 0666)
 			}); err != nil {
 				log.Fatalln(err)

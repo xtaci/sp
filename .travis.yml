@@ -6,7 +6,7 @@ before_install:
     - go get -t -v ./...
 
 install:
-    - go get github.com/xtaci/sp/archiver
+    - go get github.com/xtaci/sp/kafka2bolt
     - go get github.com/xtaci/sp/kafka2psql
     - go get github.com/xtaci/sp/joiner
 
