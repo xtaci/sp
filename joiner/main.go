@@ -205,11 +205,10 @@ func processor(c *cli.Context) error {
 					commit["table"] = outputTable
 					commit["host"] = host
 					commit["data"] = map[string]interface{}{"stream": jsonParsed.Data(), "table": v}
-					commit["key"] = fmt.Sprint(msg.Offset) // offset is unique
+					commit["key"] = fmt.Sprint(msg.Offset) // offset is unique as primary key
 					commit["created_at"] = time.Now()
 					if bts, err := json.Marshal(commit); err == nil {
 						producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
-						commitStreamOffset(db, streamOffset)
 						numJoined++
 					} else {
 						log.Println(err)
@@ -244,17 +243,6 @@ func commit(db *bolt.DB, memtable map[string]interface{}, streamOffset, tableOff
 		}
 
 		return nil
-	}); err != nil {
-		log.Fatalln(err)
-	}
-}
-
-func commitStreamOffset(db *bolt.DB, streamOffset int64) {
-	if err := db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(processorName))
-		buf := make([]byte, 8)
-		binary.LittleEndian.PutUint64(buf, uint64(streamOffset))
-		return bucket.Put([]byte(offsetStream), buf)
 	}); err != nil {
 		log.Fatalln(err)
 	}
