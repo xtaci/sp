@@ -33,6 +33,7 @@ All tools above will input/output json message from Kafka, in format:
 }
 ```
 
+* created_at: when this message was generated
 * host: where this message was generated
 * instanceId : who generated this message
 * key: a unique id (events) or primary key(table) of this message
