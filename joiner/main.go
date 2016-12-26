@@ -128,7 +128,7 @@ func processor(c *cli.Context) error {
 	}()
 
 	// read database to memory
-	memTable := make(map[string][]byte)
+	memTable := make(map[string]interface{})
 	streamOffset := sarama.OffsetNewest
 	walOffset := sarama.OffsetOldest
 
@@ -143,9 +143,10 @@ func processor(c *cli.Context) error {
 
 			c := b.Cursor()
 			for k, v := c.First(); k != nil; k, v = c.Next() {
-				value := make([]byte, len(v))
-				copy(value, v)
-				memTable[string(k)] = value
+				var obj interface{}
+				if err := json.Unmarshal(v, &obj); err == nil {
+					memTable[string(k)] = obj
+				}
 			}
 		}
 		return nil
@@ -219,12 +220,14 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(db *bolt.DB, memtable map[string][]byte, streamOffset, tableOffset int64) {
+func commit(db *bolt.DB, memtable map[string]interface{}, streamOffset, tableOffset int64) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(processorName))
 		for k, v := range memtable {
-			if err := bucket.Put([]byte(k), v); err != nil {
-				return err
+			if bts, err := json.Marshal(v); err == nil {
+				if err := bucket.Put([]byte(k), bts); err != nil {
+					return err
+				}
 			}
 		}
 
