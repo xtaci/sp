@@ -14,9 +14,9 @@ A Swiss army knife for kafka + golang stream processing.
 
 ## Installations
 ```
-go get github.com/xtaci/sp/kafka2bolt
-go get github.com/xtaci/sp/kafka2psql
-go get github.com/xtaci/sp/joiner
+go get -u github.com/xtaci/sp/kafka2bolt
+go get -u github.com/xtaci/sp/kafka2psql
+go get -u github.com/xtaci/sp/joiner
 ```
 
 ## Message Format
