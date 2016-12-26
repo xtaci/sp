@@ -129,7 +129,7 @@ func processor(c *cli.Context) error {
 
 	// read database to memory
 	memTable := make(map[string][]byte)
-	streamOffset := sarama.OffsetOldest
+	streamOffset := sarama.OffsetNewest
 	walOffset := sarama.OffsetOldest
 
 	db.View(func(tx *bolt.Tx) error {
