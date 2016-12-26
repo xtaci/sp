@@ -13,7 +13,7 @@ A Swiss army knife for kafka + golang stream processing
 
 ## Installations
 ```
-go get github.com/xtaci/sp/archiver
+go get github.com/xtaci/sp/kafka2bolt
 go get github.com/xtaci/sp/kafka2psql
 go get github.com/xtaci/sp/joiner
 ```
