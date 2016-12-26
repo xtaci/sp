@@ -190,7 +190,7 @@ func processor(c *cli.Context) error {
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				if table := fmt.Sprint(jsonParsed.Path("table").Data()); table == c.String("table") {
 					key := fmt.Sprint(jsonParsed.Path("key").Data())
-					memTable[key] = msg.Value
+					memTable[key] = jsonParsed.Data()
 				}
 			}
 		case msg := <-stream.Messages():
