@@ -120,7 +120,7 @@ func processor(c *cli.Context) error {
 		select {
 		case msg := <-partitionConsumer.Messages():
 			// create new table if necessary
-			tblName := pq.QuoteIdentifier(time.Now().Format(c.String("tblname")))
+			tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
 			if tblName != lastTblName {
 				// CREATE TABLE
 				db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
