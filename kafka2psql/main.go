@@ -16,10 +16,6 @@ import (
 	cli "gopkg.in/urfave/cli.v2"
 )
 
-const (
-	reportInterval = 30 * time.Second
-)
-
 var consumerTblName = pq.QuoteIdentifier("kafka_consumer")
 
 func main() {
@@ -53,6 +49,11 @@ func main() {
 				Value: "log20060102",
 				Usage: "psql table name, aware of timeformat in golang",
 			},
+			&cli.DurationFlag{
+				Name:  "commit-interval",
+				Value: 30 * time.Second,
+				Usage: "interval for committmign pending data to psql",
+			},
 		},
 		Action: processor,
 	}
@@ -65,6 +66,7 @@ func processor(c *cli.Context) error {
 	log.Println("table:", c.String("table"))
 	log.Println("pq:", c.String("pq"))
 	log.Println("pq-tblname:", c.String("pq-tblname"))
+	log.Println("commit-interval:", c.String("commit-interval"))
 
 	// unique consumer name to store in psql
 	consumerId := fmt.Sprintf("%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq-tblname"))
@@ -114,7 +116,8 @@ func processor(c *cli.Context) error {
 
 	log.Println("started")
 	var count int64
-	reportTicker := time.NewTicker(reportInterval)
+	commitTicker := time.NewTicker(c.Duration("commit-interval"))
+	pending := make(map[string]*sarama.ConsumerMessage)
 
 	for {
 		select {
@@ -125,35 +128,48 @@ func processor(c *cli.Context) error {
 					// create new table if necessary
 					tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
 					if tblName != lastTblName {
+						commit(lastTblName, consumerId, db, pending)
 						// CREATE TABLE
 						db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
 						lastTblName = tblName
 					}
 
-					// extract key
+					// pending
 					key := fmt.Sprint(jsonParsed.Path("key").Data())
-					commit(tblName, consumerId, db, msg, key)
+					pending[key] = msg
 					count++
 				}
 			} else {
 				log.Println(err)
 			}
-		case <-reportTicker.C:
+		case <-commitTicker.C:
+			commit(lastTblName, consumerId, db, pending)
 			log.Println("written:", count)
 			count = 0
 		}
 	}
 }
 
-func commit(tblname, consumerId string, db *sql.DB, msg *sarama.ConsumerMessage, key string) {
-	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
-		tblname), key, string(msg.Value)); err == nil {
-		// write offset
-		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
-			consumerTblName), consumerId, msg.Offset); err != nil {
+func commit(tblname, consumerId string, db *sql.DB, pending map[string]*sarama.ConsumerMessage) {
+	if len(pending) == 0 {
+		return
+	}
+
+	var maxOffset int64
+	for key, msg := range pending {
+		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
+			tblname), key, string(msg.Value)); err == nil {
+			if msg.Offset > maxOffset {
+				maxOffset = msg.Offset
+			}
+		} else {
 			log.Println(r, err)
 		}
-	} else {
+	}
+
+	// write offset
+	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
+		consumerTblName), consumerId, maxOffset); err != nil {
 		log.Println(r, err)
 	}
 }
