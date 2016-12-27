@@ -221,7 +221,7 @@ func processor(c *cli.Context) error {
 					wal.Data = STJoin{Stream: msg.Value, Table: t}
 					wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
 					wal.CreatedAt = time.Now()
-					if bts, err := json.Marshal(commit); err == nil {
+					if bts, err := json.Marshal(wal); err == nil {
 						producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
 						numJoined++
 					} else {
