@@ -119,16 +119,23 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			// create new table if necessary
-			tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
-			if tblName != lastTblName {
-				// CREATE TABLE
-				db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
-				lastTblName = tblName
-			}
+			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
+				table := fmt.Sprint(jsonParsed.Path("table").Data())
+				if table == c.String("table") { // table filter
+					// create new table if necessary
+					tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
+					if tblName != lastTblName {
+						// CREATE TABLE
+						db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
+						lastTblName = tblName
+					}
 
-			commit(tblName, consumerId, db, msg)
-			count++
+					commit(tblName, consumerId, db, msg)
+					count++
+				}
+			} else {
+				log.Println(err)
+			}
 		case <-reportTicker.C:
 			log.Println("written:", count)
 			count = 0
