@@ -213,7 +213,7 @@ func processor(c *cli.Context) error {
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
 				if t := memTable[key]; t != nil {
-					wal := WAL{}
+					wal := &WAL{}
 					wal.Type = "AUGMENT"
 					wal.InstanceId = instanceId
 					wal.Table = outputTable
