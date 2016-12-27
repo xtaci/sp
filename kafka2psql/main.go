@@ -115,9 +115,8 @@ func processor(c *cli.Context) error {
 	}()
 
 	log.Println("started")
-	var count int64
 	commitTicker := time.NewTicker(c.Duration("commit-interval"))
-	pending := make(map[string]*sarama.ConsumerMessage)
+	pending := make(map[string][]byte)
 
 	for {
 		select {
@@ -128,7 +127,8 @@ func processor(c *cli.Context) error {
 					// create new table if necessary
 					tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
 					if tblName != lastTblName {
-						commit(lastTblName, consumerId, db, pending)
+						commit(lastTblName, consumerId, db, pending, offset)
+						pending = make(map[string][]byte)
 						// CREATE TABLE
 						db.Exec("CREATE TABLE " + tblName + "(id TEXT PRIMARY KEY, data JSONB)")
 						lastTblName = tblName
@@ -136,32 +136,27 @@ func processor(c *cli.Context) error {
 
 					// pending
 					key := fmt.Sprint(jsonParsed.Path("key").Data())
-					pending[key] = msg
-					count++
+					pending[key] = msg.Value
+					offset = msg.Offset
 				}
 			} else {
 				log.Println(err)
 			}
 		case <-commitTicker.C:
-			commit(lastTblName, consumerId, db, pending)
-			log.Println("written:", count)
-			count = 0
+			commit(lastTblName, consumerId, db, pending, offset)
+			pending = make(map[string][]byte)
 		}
 	}
 }
 
-func commit(tblname, consumerId string, db *sql.DB, pending map[string]*sarama.ConsumerMessage) {
+func commit(tblname, consumerId string, db *sql.DB, pending map[string][]byte, offset int64) {
 	if len(pending) == 0 {
 		return
 	}
 
-	var maxOffset int64
-	for key, msg := range pending {
+	for key, value := range pending {
 		if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
-			tblname), key, string(msg.Value)); err == nil {
-			if msg.Offset > maxOffset {
-				maxOffset = msg.Offset
-			}
+			tblname), key, string(value)); err == nil {
 		} else {
 			log.Println(r, err)
 		}
@@ -169,7 +164,8 @@ func commit(tblname, consumerId string, db *sql.DB, pending map[string]*sarama.C
 
 	// write offset
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=EXCLUDED.value",
-		consumerTblName), consumerId, maxOffset); err != nil {
+		consumerTblName), consumerId, offset); err != nil {
 		log.Println(r, err)
 	}
+	log.Println("written:", len(pending), "offset:", offset)
 }
