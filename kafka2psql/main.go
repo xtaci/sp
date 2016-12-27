@@ -51,8 +51,8 @@ func main() {
 			},
 			&cli.DurationFlag{
 				Name:  "commit-interval",
-				Value: 30 * time.Second,
-				Usage: "interval for committmign pending data to psql",
+				Value: time.Second,
+				Usage: "interval for committing pending data to psql",
 			},
 		},
 		Action: processor,
