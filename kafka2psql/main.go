@@ -130,7 +130,9 @@ func processor(c *cli.Context) error {
 						lastTblName = tblName
 					}
 
-					commit(tblName, consumerId, db, msg)
+					// extract key
+					key := fmt.Sprint(jsonParsed.Path("key").Data())
+					commit(tblName, consumerId, db, msg, key)
 					count++
 				}
 			} else {
@@ -143,16 +145,7 @@ func processor(c *cli.Context) error {
 	}
 }
 
-func commit(tblname, consumerId string, db *sql.DB, msg *sarama.ConsumerMessage) {
-	// extract key
-	var key string
-	if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-		key = fmt.Sprint(jsonParsed.Path("key").Data())
-	} else {
-		log.Println(err)
-		return
-	}
-
+func commit(tblname, consumerId string, db *sql.DB, msg *sarama.ConsumerMessage, key string) {
 	if r, err := db.Exec(fmt.Sprintf("INSERT INTO %s (id, data) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data",
 		tblname), key, string(msg.Value)); err == nil {
 		// write offset

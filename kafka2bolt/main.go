@@ -123,11 +123,13 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			// extract key
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				key := fmt.Sprint(jsonParsed.Path("key").Data())
-				pending[key] = msg.Value
-				offset = msg.Offset
+				table := fmt.Sprint(jsonParsed.Path("table").Data())
+				if table == c.String("table") { // table filter
+					key := fmt.Sprint(jsonParsed.Path("key").Data())
+					pending[key] = msg.Value
+					offset = msg.Offset
+				}
 			} else {
 				log.Println(err)
 			}
