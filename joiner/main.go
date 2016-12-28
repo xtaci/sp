@@ -212,21 +212,20 @@ func processor(c *cli.Context) error {
 			streamOffset = msg.Offset
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
 				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
-				if t := memTable[key]; t != nil {
-					wal := &WAL{}
-					wal.Type = "AUGMENT"
-					wal.InstanceId = instanceId
-					wal.Table = outputTable
-					wal.Host = host
-					wal.Data = STJoin{Stream: msg.Value, Table: t}
-					wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
-					wal.CreatedAt = time.Now()
-					if bts, err := json.Marshal(wal); err == nil {
-						producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
-						numJoined++
-					} else {
-						log.Println(err)
-					}
+				t := memTable[key]
+				wal := &WAL{}
+				wal.Type = "AUGMENT"
+				wal.InstanceId = instanceId
+				wal.Table = outputTable
+				wal.Host = host
+				wal.Data = STJoin{Stream: msg.Value, Table: t}
+				wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
+				wal.CreatedAt = time.Now()
+				if bts, err := json.Marshal(wal); err == nil {
+					producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
+					numJoined++
+				} else {
+					log.Println(err)
 				}
 			}
 		}
