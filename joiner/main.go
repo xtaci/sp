@@ -33,8 +33,8 @@ type WAL struct {
 }
 
 type STJoin struct {
-	Stream json.RawMessage `json:"stream"`
-	Table  json.RawMessage `json:"table"`
+	Stream *json.RawMessage `json:"stream"`
+	Table  *json.RawMessage `json:"table"`
 }
 
 func main() {
@@ -218,7 +218,7 @@ func processor(c *cli.Context) error {
 				wal.InstanceId = instanceId
 				wal.Table = outputTable
 				wal.Host = host
-				wal.Data = STJoin{Stream: msg.Value, Table: t}
+				wal.Data = STJoin{Stream: (*json.RawMessage)(&msg.Value), Table: (*json.RawMessage)(&t)}
 				wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
 				wal.CreatedAt = time.Now()
 				if bts, err := json.Marshal(wal); err == nil {
