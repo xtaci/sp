@@ -27,8 +27,8 @@ All tools above will input/output json message from Kafka, in format:
   "data": {},
   "host": "game-dev",
   "instanceId": "game1",
-  "key": 1059730,
-  "table": "event_updates",
+  "key": "1059730",
+  "table": "user_updates",
   "type": "WAL"
 }
 ```
