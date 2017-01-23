@@ -23,13 +23,13 @@ const (
 )
 
 type WAL struct {
-	Type       string      `json:"type"`
-	InstanceId string      `json:"instanceId"`
-	Table      string      `json:"table"`
-	Host       string      `json:"host"`
-	Key        string      `json:"key"`
-	CreatedAt  time.Time   `json:"created_at"`
-	Data       interface{} `json:"data"`
+	Type       string          `json:"type"`
+	InstanceId string          `json:"instanceId"`
+	Table      string          `json:"table"`
+	Host       string          `json:"host"`
+	Key        string          `json:"key"`
+	CreatedAt  time.Time       `json:"created_at"`
+	Data       json.RawMessage `json:"data"`
 }
 
 type STJoin struct {
@@ -202,10 +202,10 @@ func processor(c *cli.Context) error {
 			numJoined = 0
 		case msg := <-wal.Messages():
 			walOffset = msg.Offset
-			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				if table := fmt.Sprint(jsonParsed.Path("table").Data()); table == c.String("table") {
-					key := fmt.Sprint(jsonParsed.Path("key").Data())
-					memTable[key] = msg.Value
+			wal := &WAL{}
+			if err := json.Unmarshal(msg.Value, wal); err == nil {
+				if wal.Table == c.String("table") { // table filter
+					memTable[wal.Key] = msg.Value
 				}
 			}
 		case msg := <-stream.Messages():
@@ -218,7 +218,8 @@ func processor(c *cli.Context) error {
 				wal.InstanceId = instanceId
 				wal.Table = outputTable
 				wal.Host = host
-				wal.Data = STJoin{Stream: (*json.RawMessage)(&msg.Value), Table: (*json.RawMessage)(&t)}
+				data, _ := json.Marshal(STJoin{Stream: (*json.RawMessage)(&msg.Value), Table: (*json.RawMessage)(&t)})
+				wal.Data = data
 				wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
 				wal.CreatedAt = time.Now()
 				if bts, err := json.Marshal(wal); err == nil {
