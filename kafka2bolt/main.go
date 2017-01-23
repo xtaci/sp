@@ -2,11 +2,10 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
+	"encoding/json"
 	"os"
 	"time"
 
-	"github.com/Jeffail/gabs"
 	"github.com/Shopify/sarama"
 	log "github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
@@ -17,6 +16,16 @@ const (
 	bucketName = "snapshot"
 	offsetKey  = "__offset__"
 )
+
+type WAL struct {
+	Type       string          `json:"type"`
+	InstanceId string          `json:"instanceId"`
+	Table      string          `json:"table"`
+	Host       string          `json:"host"`
+	Key        string          `json:"key"`
+	CreatedAt  time.Time       `json:"created_at"`
+	Data       json.RawMessage `json:"data"`
+}
 
 func main() {
 	app := &cli.App{
@@ -123,11 +132,10 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				table := fmt.Sprint(jsonParsed.Path("table").Data())
-				if table == c.String("table") { // table filter
-					key := fmt.Sprint(jsonParsed.Path("key").Data())
-					pending[key] = msg.Value
+			wal := &WAL{}
+			if err := json.Unmarshal(msg.Value, wal); err == nil {
+				if wal.Table == c.String("table") { // table filter
+					pending[wal.Key] = msg.Value
 					offset = msg.Offset
 				}
 			} else {
