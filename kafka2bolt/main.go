@@ -39,13 +39,13 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "wal",
+				Name:  "table-topic",
 				Value: "WAL",
-				Usage: "topic name for consuming commit log",
+				Usage: "topic name that contains the table",
 			},
 			&cli.StringFlag{
 				Name:  "table",
-				Value: "event_updates",
+				Value: "user_updates",
 				Usage: "table name in WAL to archive",
 			},
 			&cli.StringFlag{
@@ -75,21 +75,29 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	log.Println("brokers:", c.StringSlice("brokers"))
-	log.Println("wal:", c.String("wal"))
-	log.Println("base:", c.String("base"))
-	log.Println("table:", c.String("table"))
-	log.Println("snapshot:", c.String("snapshot"))
-	log.Println("rotate:", c.Duration("rotate"))
-	log.Println("commit-interval:", c.Duration("commit-interval"))
+	brokers := c.StringSlice("brokers")
+	table_topic := c.String("table-topic")
+	table := c.String("table")
+	base := c.String("base")
+	snapshot := c.String("snapshot")
+	rotate := c.Duration("rotate")
+	commit_interval := c.Duration("commit-interval")
 
-	db, err := bolt.Open(c.String("base"), 0666, nil)
+	log.Println("brokers:", brokers)
+	log.Println("table-topic:", table_topic)
+	log.Println("table:", table)
+	log.Println("base:", base)
+	log.Println("snapshot:", snapshot)
+	log.Println("rotate:", rotate)
+	log.Println("commit-interval:", commit_interval)
+
+	db, err := bolt.Open(base, 0666, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	consumer, err := sarama.NewConsumer(c.StringSlice("brokers"), nil)
+	consumer, err := sarama.NewConsumer(brokers, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -111,9 +119,9 @@ func processor(c *cli.Context) error {
 		}
 		return nil
 	})
-	log.Println("consuming from offset:", offset)
+	log.Printf("consuming from topic:%v offset:%v", table_topic, offset)
 
-	partitionConsumer, err := consumer.ConsumePartition(c.String("wal"), 0, offset)
+	partitionConsumer, err := consumer.ConsumePartition(table_topic, 0, offset)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -125,8 +133,8 @@ func processor(c *cli.Context) error {
 	}()
 
 	pending := make(map[string][]byte)
-	rotateTicker := time.NewTicker(c.Duration("rotate"))
-	commitTicker := time.NewTicker(c.Duration("commit-interval"))
+	rotateTicker := time.NewTicker(rotate)
+	commitTicker := time.NewTicker(commit_interval)
 
 	log.Println("started")
 	for {
@@ -134,7 +142,7 @@ func processor(c *cli.Context) error {
 		case msg := <-partitionConsumer.Messages():
 			wal := &WAL{}
 			if err := json.Unmarshal(msg.Value, wal); err == nil {
-				if wal.Table == c.String("table") { // table filter
+				if wal.Table == table { // table filter
 					pending[wal.Key] = msg.Value
 					offset = msg.Offset
 				}
@@ -146,7 +154,7 @@ func processor(c *cli.Context) error {
 			pending = make(map[string][]byte)
 		case <-rotateTicker.C:
 			if err := db.View(func(tx *bolt.Tx) error {
-				newfile := time.Now().Format(c.String("snapshot"))
+				newfile := time.Now().Format(snapshot)
 				log.Println("new boltdb file:", newfile)
 				return tx.CopyFile(newfile, 0666)
 			}); err != nil {

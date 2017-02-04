@@ -118,7 +118,7 @@ func processor(c *cli.Context) error {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("consuming from offset:", offset)
+	log.Printf("consuming from topic:%v offset:%v", table_topic, offset)
 
 	tableConsumer, err := consumer.ConsumePartition(table_topic, 0, offset)
 	if err != nil {
