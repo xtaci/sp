@@ -40,7 +40,7 @@ type STJoin struct {
 func main() {
 	app := &cli.App{
 		Name:    processorName,
-		Usage:   "Stream-Table Joining On stream.foreignkey = table.primarykey",
+		Usage:   "Stream-Table joining on stream-topic.stream-key = table-topic.key",
 		Version: "0.1",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
@@ -49,9 +49,9 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "wal",
+				Name:  "table-topic",
 				Value: "WAL",
-				Usage: "topic name for consuming commit log",
+				Usage: "topic name that contains the table",
 			},
 			&cli.StringFlag{
 				Name:  "table",
@@ -59,19 +59,19 @@ func main() {
 				Usage: "table name in WAL to JOIN",
 			},
 			&cli.StringFlag{
-				Name:  "stream",
+				Name:  "stream-topic",
 				Value: "events",
 				Usage: "the stream topic to do JOIN",
 			},
 			&cli.StringFlag{
-				Name:  "output",
-				Value: "",
-				Usage: "default output topic name: joiner-{wal}-{table}-{stream}",
-			},
-			&cli.StringFlag{
-				Name:  "foreignkey,FK",
+				Name:  "stream-key",
 				Value: "",
 				Usage: "extract the json field as foreign key in stream messages, format: https://github.com/Jeffail/gabs",
+			},
+			&cli.StringFlag{
+				Name:  "output-topic",
+				Value: "",
+				Usage: "default output topic name: joiner-{table-topic}-{table}-{stream}",
 			},
 			&cli.DurationFlag{
 				Name:  "write-interval",
@@ -85,26 +85,32 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	log.Println("brokers:", c.StringSlice("brokers"))
-	log.Println("wal:", c.String("wal"))
-	log.Println("table:", c.String("table"))
-	log.Println("stream:", c.String("stream"))
-	log.Println("foreignkey:", c.String("foreignkey"))
-	log.Println("write-interval:", c.Duration("write-interval"))
-
-	outputTopic := c.String("output")
-	if outputTopic == "" {
-		outputTopic = fmt.Sprintf("joiner-%v-%v-%v", c.String("wal"), c.String("table"), c.String("stream"))
+	brokers := c.StringSlice("brokers")
+	table_topic := c.String("table-topic")
+	table := c.String("table")
+	stream_topic := c.String("stream-topic")
+	stream_key := c.String("stream-key")
+	output_topic := c.String("output-topic")
+	if output_topic == "" {
+		output_topic = fmt.Sprintf("joiner-%v-%v-%v", table_topic, table, stream_topic)
 	}
-	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", c.String("wal"), c.String("table"), c.String("stream"))
+	write_interval := c.Duration("write-interval")
+
+	log.Println("brokers:", brokers)
+	log.Println("table-topic:", table_topic)
+	log.Println("table:", table)
+	log.Println("stream-topic:", stream_topic)
+	log.Println("stream-key:", stream_key)
+	log.Println("output-topic:", output_topic)
+	log.Println("write-interval:", write_interval)
+
+	cachefile := fmt.Sprintf(".joiner-%v-%v-%v.cache", table_topic, table, stream_topic)
 	instanceId := fmt.Sprintf("%v-%v", processorName, os.Getpid())
-	log.Println("output:", outputTopic)
-	log.Println("output table:", outputTable)
 	log.Println("cache file:", cachefile)
 	log.Println("instanceId:", instanceId)
 
-	if c.String("foreignkey") == "" {
-		log.Fatalln("foreignkey is not set")
+	if stream_key == "" {
+		log.Fatalln("stream_key is not set")
 	}
 
 	db, err := bolt.Open(cachefile, 0666, nil)
@@ -120,7 +126,7 @@ func processor(c *cli.Context) error {
 		log.Fatalln(err)
 	}
 
-	consumer, err := sarama.NewConsumer(c.StringSlice("brokers"), nil)
+	consumer, err := sarama.NewConsumer(brokers, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -128,7 +134,7 @@ func processor(c *cli.Context) error {
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = false
 	config.Producer.Return.Errors = false
-	producer, err := sarama.NewAsyncProducer(c.StringSlice("brokers"), config)
+	producer, err := sarama.NewAsyncProducer(brokers, config)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -145,7 +151,7 @@ func processor(c *cli.Context) error {
 	// read database to memory
 	memTable := make(map[string][]byte)
 	streamOffset := sarama.OffsetNewest
-	walOffset := sarama.OffsetOldest
+	tableOffset := sarama.OffsetOldest
 
 	db.View(func(tx *bolt.Tx) error {
 		if b := tx.Bucket([]byte(processorName)); b != nil {
@@ -153,7 +159,7 @@ func processor(c *cli.Context) error {
 				streamOffset = int64(binary.LittleEndian.Uint64(v))
 			}
 			if v := b.Get([]byte(offsetWAL)); v != nil {
-				walOffset = int64(binary.LittleEndian.Uint64(v))
+				tableOffset = int64(binary.LittleEndian.Uint64(v))
 			}
 
 			c := b.Cursor()
@@ -166,30 +172,30 @@ func processor(c *cli.Context) error {
 		return nil
 	})
 
-	log.Printf("consuming from: stream:%v offset:%v  wal:%v offset:%v", c.String("stream"), streamOffset, c.String("wal"), walOffset)
+	log.Printf("consuming from stream offset:%v table offset:%v", streamOffset, tableOffset)
 
-	stream, err := consumer.ConsumePartition(c.String("stream"), 0, streamOffset)
+	streamConsumer, err := consumer.ConsumePartition(stream_topic, 0, streamOffset)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	wal, err := consumer.ConsumePartition(c.String("wal"), 0, walOffset)
+	tableConsumer, err := consumer.ConsumePartition(table_topic, 0, tableOffset)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	defer func() {
-		if err := stream.Close(); err != nil {
+		if err := streamConsumer.Close(); err != nil {
 			log.Fatalln(err)
 		}
 
-		if err := wal.Close(); err != nil {
+		if err := tableConsumer.Close(); err != nil {
 			log.Fatalln(err)
 		}
 	}()
 
 	log.Println("started")
-	ticker := time.NewTicker(c.Duration("write-interval"))
+	ticker := time.NewTicker(write_interval)
 	numJoined := 0
 
 	// parameters
@@ -197,21 +203,21 @@ func processor(c *cli.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			commit(db, memTable, streamOffset, walOffset)
-			log.Println("committed:", len(memTable), "stream offset:", streamOffset, "wal offset:", walOffset, "joined:", numJoined)
+			commit(db, memTable, streamOffset, tableOffset)
+			log.Println("committed:", len(memTable), "stream offset:", streamOffset, "table offset:", tableOffset, "joined:", numJoined)
 			numJoined = 0
-		case msg := <-wal.Messages():
-			walOffset = msg.Offset
+		case msg := <-tableConsumer.Messages():
+			tableOffset = msg.Offset
 			wal := &WAL{}
 			if err := json.Unmarshal(msg.Value, wal); err == nil {
-				if wal.Table == c.String("table") { // table filter
+				if wal.Table == table { // table filter
 					memTable[wal.Key] = msg.Value
 				}
 			}
-		case msg := <-stream.Messages():
+		case msg := <-streamConsumer.Messages():
 			streamOffset = msg.Offset
 			if jsonParsed, err := gabs.ParseJSON(msg.Value); err == nil {
-				key := fmt.Sprint(jsonParsed.Path(c.String("foreignkey")).Data())
+				key := fmt.Sprint(jsonParsed.Path(stream_key).Data())
 				t := memTable[key]
 				wal := &WAL{}
 				wal.Type = "AUGMENT"
@@ -223,7 +229,7 @@ func processor(c *cli.Context) error {
 				wal.Key = fmt.Sprint(msg.Offset) // offset is unique as primary key
 				wal.CreatedAt = time.Now()
 				if bts, err := json.Marshal(wal); err == nil {
-					producer.Input() <- &sarama.ProducerMessage{Topic: outputTopic, Value: sarama.ByteEncoder([]byte(bts))}
+					producer.Input() <- &sarama.ProducerMessage{Topic: output_topic, Value: sarama.ByteEncoder([]byte(bts))}
 					numJoined++
 				} else {
 					log.Println(err)
