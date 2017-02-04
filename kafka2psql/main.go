@@ -56,7 +56,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:  "pq-tblname",
-				Value: "log20060102",
+				Value: "users",
 				Usage: "psql table name, aware of timeformat in golang",
 			},
 			&cli.DurationFlag{
