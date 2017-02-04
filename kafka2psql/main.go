@@ -144,6 +144,7 @@ func processor(c *cli.Context) error {
 					// create new table if necessary
 					tblName := postgres.QuoteIdentifier(time.Now().Format(pq_tblname))
 					if tblName != lastTblName {
+						// rotate database table
 						commit(lastTblName, consumerId, db, pending, offset)
 						pending = make(map[string][]byte)
 						// CREATE TABLE
@@ -183,5 +184,5 @@ func commit(tblname, consumerId string, db *sql.DB, pending map[string][]byte, o
 		consumerTblName), consumerId, offset); err != nil {
 		log.Println(r, err)
 	}
-	log.Println("written:", len(pending), "offset:", offset)
+	log.Println("database table:", tblname, "consumer id:", consumerId, "topic offset:", offset, "written:", len(pending))
 }
