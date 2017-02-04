@@ -8,7 +8,7 @@ import (
 
 	"database/sql"
 
-	"github.com/lib/pq"
+	postgres "github.com/lib/pq"
 
 	"github.com/Shopify/sarama"
 
@@ -16,7 +16,7 @@ import (
 	cli "gopkg.in/urfave/cli.v2"
 )
 
-var consumerTblName = pq.QuoteIdentifier("kafka_consumer")
+var consumerTblName = postgres.QuoteIdentifier("kafka_consumer")
 
 type WAL struct {
 	Type       string          `json:"type"`
@@ -40,9 +40,9 @@ func main() {
 				Usage: "kafka brokers address",
 			},
 			&cli.StringFlag{
-				Name:  "wal",
+				Name:  "table-topic",
 				Value: "WAL",
-				Usage: "topic name for consuming commit log",
+				Usage: "topic name that contains the table",
 			},
 			&cli.StringFlag{
 				Name:  "table",
@@ -71,25 +71,32 @@ func main() {
 }
 
 func processor(c *cli.Context) error {
-	log.Println("brokers:", c.StringSlice("brokers"))
-	log.Println("wal:", c.String("wal"))
-	log.Println("table:", c.String("table"))
-	log.Println("pq:", c.String("pq"))
-	log.Println("pq-tblname:", c.String("pq-tblname"))
-	log.Println("commit-interval:", c.String("commit-interval"))
+	brokers := c.StringSlice("brokers")
+	table_topic := c.String("table-topic")
+	table := c.String("table")
+	pq := c.String("pq")
+	pq_tblname := c.String("pq-tblname")
+	commit_interval := c.Duration("commit-interval")
+
+	log.Println("brokers:", brokers)
+	log.Println("table-topic:", table_topic)
+	log.Println("table:", table)
+	log.Println("pq:", pq)
+	log.Println("pq-tblname:", pq_tblname)
+	log.Println("commit-interval:", commit_interval)
 
 	// unique consumer name to store in psql
-	consumerId := fmt.Sprintf("%v-%v-%v", c.String("wal"), c.String("table"), c.String("pq-tblname"))
+	consumerId := fmt.Sprintf("%v-%v-%v", table_topic, table, pq_tblname)
 	log.Println("consumerId:", consumerId)
 
 	// connect to postgres
-	db, err := sql.Open("postgres", c.String("pq"))
+	db, err := sql.Open("postgres", pq)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	consumer, err := sarama.NewConsumer(c.StringSlice("brokers"), nil)
+	consumer, err := sarama.NewConsumer(brokers, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -102,7 +109,7 @@ func processor(c *cli.Context) error {
 
 	// table creation
 	db.Exec(fmt.Sprintf("CREATE TABLE %s (id TEXT PRIMARY KEY, value BIGINT)", consumerTblName))
-	lastTblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
+	lastTblName := postgres.QuoteIdentifier(time.Now().Format(pq_tblname))
 	db.Exec("CREATE TABLE " + lastTblName + "(id TEXT PRIMARY KEY, data JSONB)")
 
 	// read offset
@@ -113,29 +120,29 @@ func processor(c *cli.Context) error {
 	}
 	log.Println("consuming from offset:", offset)
 
-	partitionConsumer, err := consumer.ConsumePartition(c.String("wal"), 0, offset)
+	tableConsumer, err := consumer.ConsumePartition(table_topic, 0, offset)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	defer func() {
-		if err := partitionConsumer.Close(); err != nil {
+		if err := tableConsumer.Close(); err != nil {
 			log.Fatalln(err)
 		}
 	}()
 
 	log.Println("started")
-	commitTicker := time.NewTicker(c.Duration("commit-interval"))
+	commitTicker := time.NewTicker(commit_interval)
 	pending := make(map[string][]byte)
 
 	for {
 		select {
-		case msg := <-partitionConsumer.Messages():
+		case msg := <-tableConsumer.Messages():
 			wal := &WAL{}
 			if err := json.Unmarshal(msg.Value, wal); err == nil {
-				if wal.Table == c.String("table") { // table filter
+				if wal.Table == table { // table filter
 					// create new table if necessary
-					tblName := pq.QuoteIdentifier(time.Now().Format(c.String("pq-tblname")))
+					tblName := postgres.QuoteIdentifier(time.Now().Format(pq_tblname))
 					if tblName != lastTblName {
 						commit(lastTblName, consumerId, db, pending, offset)
 						pending = make(map[string][]byte)
