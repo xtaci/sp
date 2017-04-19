@@ -1,5 +1,7 @@
 # Stream Processors on Kafka in Golang
+
 [![Build Status][1]][2]
+
 [1]: https://travis-ci.org/xtaci/sp.svg?branch=master
 [2]: https://travis-ci.org/xtaci/sp
 
